@@ -680,6 +680,18 @@
         throw new Error('SUB2API 返回的目标分组 ID 无效。');
       }
 
+      if (state.skipAccountCreation || options.skipAccountCreation) {
+        await logWithOptions(`${logLabel}：授权码交换成功（重新授权模式，跳过创建账号）。`, 'ok', options);
+        return {
+          localhostUrl: callback.url,
+          credentials,
+          extra,
+          email: resolvedEmail,
+          groupIds,
+          proxyId,
+        };
+      }
+
       const accountName = resolvedEmail
         || flowEmail
         || normalizeString(state.sub2apiDraftName)
@@ -798,7 +810,49 @@
       };
     }
 
+    async function listErrorAccounts(state = {}, options = {}) {
+      const logLabel = normalizeString(options.logLabel) || '查询错误账号';
+      await logWithOptions(`${logLabel}：正在登录 SUB2API 并查询错误账号...`, 'info', options);
+      const { origin, token } = await loginSub2Api(state, options);
+
+      const pageSize = options.pageSize || 100;
+      const result = await requestJson(origin, `/api/v1/admin/accounts?status=error&platform=openai&page_size=${pageSize}`, {
+        method: 'GET',
+        token,
+        timeoutMs: options.timeoutMs,
+      });
+
+      const items = Array.isArray(result?.items) ? result.items : [];
+      await logWithOptions(`${logLabel}：找到 ${items.length} 个错误账号。`, 'ok', options);
+      return items;
+    }
+
+    async function applyOAuthCredentials(accountId, state = {}, credentials = {}, options = {}) {
+      const logLabel = normalizeString(options.logLabel) || '更新 OAuth 凭据';
+
+      if (!accountId) {
+        throw new Error('缺少账号 ID，无法更新 OAuth 凭据。');
+      }
+
+      await logWithOptions(`${logLabel}：正在登录 SUB2API 并更新账号 #${accountId} 的 OAuth 凭据...`, 'info', options);
+      const { origin, token } = await loginSub2Api(state, options);
+
+      const result = await requestJson(origin, `/api/v1/admin/accounts/${accountId}/apply-oauth-credentials`, {
+        method: 'POST',
+        token,
+        timeoutMs: options.timeoutMs,
+        body: {
+          type: 'oauth',
+          credentials,
+        },
+      });
+
+      await logWithOptions(`${logLabel}：账号 #${accountId} 的 OAuth 凭据已更新。`, 'ok', options);
+      return result;
+    }
+
     return {
+      applyOAuthCredentials,
       buildDraftAccountName,
       buildCodexSessionImportContent,
       buildOpenAiCredentials,
@@ -808,6 +862,7 @@
       generateOpenAiAuthUrl,
       getGroupsByNames,
       importCurrentChatGptSession,
+      listErrorAccounts,
       loginSub2Api,
       normalizeProxyId,
       normalizeRedirectUri,

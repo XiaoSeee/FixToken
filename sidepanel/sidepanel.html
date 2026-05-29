@@ -43,6 +43,7 @@
           自动
         </button>
         <button id="btn-stop" class="btn btn-danger" title="停止当前流程" disabled>停止</button>
+
       </div>
       <button id="btn-reset" class="btn btn-ghost" title="重置全部步骤">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1758,6 +1759,24 @@
         <div class="data-inline signup-phone-runtime-inline">
           <input type="text" id="input-signup-phone" class="data-input mono signup-phone-runtime-input" placeholder="完整国际号码，如 +44..." />
         </div>
+      </div>
+    </div>
+    <div id="reauth-card" class="data-card reauth-card">
+      <div class="section-mini-header">
+        <div class="section-mini-copy">
+          <span class="section-label">重新授权</span>
+          <span class="data-value">SUB2API 错误账号批量重新授权</span>
+        </div>
+        <div class="section-mini-actions">
+          <button id="btn-reauth-fetch" class="btn btn-ghost btn-xs" type="button">获取账号</button>
+          <button id="btn-reauth-start" class="btn btn-primary btn-xs" type="button" disabled>开始授权</button>
+        </div>
+      </div>
+      <div id="reauth-account-list" class="reauth-account-list-container">
+        <div class="reauth-empty-hint">点击"获取账号"加载错误账号列表</div>
+      </div>
+      <div id="reauth-status-bar" class="reauth-status-bar" style="display:none;">
+        <span id="reauth-status-text">准备就绪</span>
       </div>
     </div>
     <div id="status-bar" class="status-bar">

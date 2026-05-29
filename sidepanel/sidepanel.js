@@ -18300,9 +18300,173 @@ updateConfigMenuControls();
 setLocalCpaStep9Mode(DEFAULT_LOCAL_CPA_STEP9_MODE);
 setMail2925Mode(DEFAULT_MAIL_2925_MODE);
 setCloudflareTempEmailLookupMode(DEFAULT_CLOUDFLARE_TEMP_EMAIL_LOOKUP_MODE);
-initializeReleaseInfo().catch((err) => {
-  console.error('Failed to initialize release info:', err);
+
+// Reauth Card State
+let reauthAccounts = [];
+let reauthStatuses = {};
+
+async function loadReauthStatuses() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['reauthAccountStatuses'], (result) => {
+      reauthStatuses = result.reauthAccountStatuses || {};
+      resolve(reauthStatuses);
+    });
+  });
+}
+
+async function saveReauthStatuses() {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ reauthAccountStatuses: reauthStatuses }, resolve);
+  });
+}
+
+function renderReauthAccountList() {
+  const container = document.getElementById('reauth-account-list');
+  if (!container) return;
+  
+  if (!reauthAccounts || reauthAccounts.length === 0) {
+    container.innerHTML = '<div class="reauth-empty-hint">未找到错误账号</div>';
+    const startBtn = document.getElementById('btn-reauth-start');
+    if (startBtn) startBtn.disabled = true;
+    return;
+  }
+  
+  const selectActions = `
+    <div class="reauth-select-actions">
+      <button class="btn btn-ghost btn-xs" id="btn-reauth-select-all">全选</button>
+      <button class="btn btn-ghost btn-xs" id="btn-reauth-deselect-all">取消全选</button>
+    </div>
+  `;
+  
+  const items = reauthAccounts.map(acc => {
+    const status = reauthStatuses[acc.id]?.status || 'pending';
+    const statusText = {
+      pending: '等待',
+      processing: '处理中',
+      success: '成功',
+      failed: '失败'
+    }[status] || '等待';
+    
+    return `
+      <label class="reauth-account-item">
+        <input type="checkbox" name="reauth-account" value="${acc.id}" ${status === 'success' ? '' : 'checked'}>
+        <span class="reauth-account-name">${acc.name || acc.credentials?.email || '未命名'}</span>
+        <span class="reauth-account-status ${status}">${statusText}</span>
+      </label>
+    `;
+  }).join('');
+  
+  container.innerHTML = selectActions + items;
+  updateReauthStartButton();
+  
+  document.getElementById('btn-reauth-select-all')?.addEventListener('click', () => {
+    container.querySelectorAll('input[name="reauth-account"]').forEach(cb => cb.checked = true);
+    updateReauthStartButton();
+  });
+  document.getElementById('btn-reauth-deselect-all')?.addEventListener('click', () => {
+    container.querySelectorAll('input[name="reauth-account"]').forEach(cb => cb.checked = false);
+    updateReauthStartButton();
+  });
+  
+  container.querySelectorAll('input[name="reauth-account"]').forEach(cb => {
+    cb.addEventListener('change', updateReauthStartButton);
+  });
+}
+
+function updateReauthStartButton() {
+  const checked = document.querySelectorAll('input[name="reauth-account"]:checked');
+  const startBtn = document.getElementById('btn-reauth-start');
+  if (startBtn) startBtn.disabled = checked.length === 0;
+}
+
+document.getElementById('btn-reauth-fetch')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-reauth-fetch');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = '获取中...';
+  
+  try {
+    await loadReauthStatuses();
+    const response = await chrome.runtime.sendMessage({ type: 'SUB2API_LIST_ERROR_ACCOUNTS' });
+    if (response?.ok) {
+      reauthAccounts = response.accounts || [];
+      renderReauthAccountList();
+    } else {
+      throw new Error(response?.error || '获取失败');
+    }
+  } catch (error) {
+    console.error('获取错误账号失败:', error);
+    const container = document.getElementById('reauth-account-list');
+    if (container) {
+      container.innerHTML = `<div class="reauth-empty-hint" style="color: var(--red);">获取失败: ${error.message}</div>`;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '获取账号';
+  }
 });
+
+document.getElementById('btn-reauth-start')?.addEventListener('click', async () => {
+  const checked = document.querySelectorAll('input[name="reauth-account"]:checked');
+  if (checked.length === 0) return;
+  
+  const selectedIds = Array.from(checked).map(cb => cb.value);
+  const selectedAccounts = selectedIds.map(id => {
+    const acc = reauthAccounts.find(a => String(a.id) === String(id));
+    return {
+      id: String(id),
+      email: acc?.credentials?.email || acc?.name || '',
+    };
+  });
+  
+  selectedIds.forEach(id => {
+    reauthStatuses[id] = { status: 'processing', timestamp: Date.now() };
+  });
+  await saveReauthStatuses();
+  renderReauthAccountList();
+  
+  const statusBar = document.getElementById('reauth-status-bar');
+  const statusText = document.getElementById('reauth-status-text');
+  if (statusBar) statusBar.style.display = 'flex';
+  if (statusText) statusText.textContent = `正在处理 ${selectedAccounts.length} 个账号...`;
+  
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'START_SUB2API_REAUTH',
+      accounts: selectedAccounts,
+    });
+    
+    if (response?.ok && response.results) {
+      response.results.forEach(result => {
+        reauthStatuses[result.accountId] = {
+          status: result.success ? 'success' : 'failed',
+          error: result.error || null,
+          timestamp: Date.now()
+        };
+      });
+      await saveReauthStatuses();
+      renderReauthAccountList();
+      
+      const successCount = response.results.filter(r => r.success).length;
+      const failCount = response.results.filter(r => !r.success).length;
+      if (statusText) statusText.textContent = `完成：成功 ${successCount} 个，失败 ${failCount} 个`;
+    }
+  } catch (error) {
+    console.error('重新授权失败:', error);
+    if (statusText) statusText.textContent = `失败: ${error.message}`;
+    
+    selectedIds.forEach(id => {
+      if (reauthStatuses[id]?.status === 'processing') {
+        reauthStatuses[id] = { status: 'failed', error: error.message, timestamp: Date.now() };
+      }
+    });
+    await saveReauthStatuses();
+    renderReauthAccountList();
+  }
+});
+
+loadReauthStatuses();
+
 Promise.allSettled([
   loadHeroSmsCountries({ silent: true }),
   loadFiveSimCountries({ silent: true }),

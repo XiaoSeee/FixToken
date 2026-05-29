@@ -392,6 +392,35 @@
       let lastError = null;
       for (let attempt = 1; attempt <= maxExchangeAttempts; attempt += 1) {
         try {
+          const isReauth = Boolean(state.selectedAccountId);
+          
+          if (isReauth) {
+            const exchangeResult = await api.submitOpenAiCallback({
+              ...state,
+              visibleStep,
+              sub2apiUrl,
+              skipAccountCreation: true,
+            }, {
+              visibleStep,
+              logLabel: `步骤 ${visibleStep}（重新授权）`,
+              logOptions: { step: visibleStep, stepKey: 'platform-verify' },
+              timeoutMs: SUB2API_STEP9_RESPONSE_TIMEOUT_MS,
+            });
+            
+            const credentials = exchangeResult?.credentials || {};
+            await api.applyOAuthCredentials(state.selectedAccountId, state, credentials, {
+              logLabel: `步骤 ${visibleStep}（重新授权）`,
+              timeoutMs: SUB2API_STEP9_RESPONSE_TIMEOUT_MS,
+            });
+            
+            await completeNodeFromBackground(state?.nodeId || 'platform-verify', {
+              ...exchangeResult,
+              verifiedStatus: `SUB2API 已重新授权账号 #${state.selectedAccountId}`,
+              reauthCompleted: true,
+            });
+            return;
+          }
+          
           const result = await api.submitOpenAiCallback({
             ...state,
             visibleStep,

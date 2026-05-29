@@ -74,6 +74,7 @@ importScripts(
   'flows/openai/background/steps/gopay-approve.js',
   'flows/openai/background/steps/plus-return-confirm.js',
   'flows/openai/background/steps/sub2api-session-import.js',
+  'flows/openai/background/steps/sub2api-reauth.js',
   'flows/openai/background/steps/cpa-session-import.js',
   'flows/openai/background/steps/oauth-login.js',
   'flows/openai/background/steps/fetch-login-code.js',
@@ -11396,6 +11397,7 @@ async function requestStop(options = {}) {
   const timerPlan = getPendingAutoRunTimerPlan(state);
 
   if (timerPlan && !autoRunActive) {
+    stopRequested = true;
     autoRunCurrentRun = timerPlan.currentRun;
     autoRunTotalRuns = timerPlan.totalRuns;
     autoRunAttemptRun = timerPlan.attemptRun;
@@ -13810,6 +13812,14 @@ const sub2ApiSessionImportExecutor = self.MultiPageBackgroundSub2ApiSessionImpor
   waitForTabCompleteUntilStopped,
   DEFAULT_SUB2API_GROUP_NAME,
 });
+const sub2ApiReauthExecutor = self.MultiPageBackgroundSub2ApiReauth?.createSub2ApiReauthExecutor({
+  addLog,
+  chrome,
+  completeNodeFromBackground,
+  normalizeSub2ApiUrl,
+  throwIfStopped,
+  DEFAULT_SUB2API_GROUP_NAME,
+});
 const cpaSessionImportExecutor = self.MultiPageBackgroundCpaSessionImport?.createCpaSessionImportExecutor({
   addLog,
   chrome,
@@ -14006,6 +14016,7 @@ const stepExecutorsByKey = {
     : payPalApproveExecutor.executePayPalApprove(state),
   'plus-checkout-return': (state) => plusReturnConfirmExecutor.executePlusReturnConfirm(state),
   'sub2api-session-import': (state) => sub2ApiSessionImportExecutor.executeSub2ApiSessionImport(state),
+  'sub2api-reauth': (state) => sub2ApiReauthExecutor.executeSub2ApiReauth(state),
   'cpa-session-import': (state) => cpaSessionImportExecutor.executeCpaSessionImport(state),
   'oauth-login': (state) => step7Executor.executeStep7(state),
   'fetch-login-code': (state) => step8Executor.executeStep8(state),

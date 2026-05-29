@@ -192,6 +192,71 @@
       verifyHotmailAccount,
     } = deps;
 
+    const OPENAI_COOKIE_CLEAR_DOMAINS = [
+      'chatgpt.com',
+      'chat.openai.com',
+      'openai.com',
+      'auth.openai.com',
+      'auth0.openai.com',
+      'accounts.openai.com',
+    ];
+
+    async function clearOpenAiCookies() {
+      const chromeApi = typeof chrome !== 'undefined' ? chrome : globalThis.chrome;
+      if (!chromeApi?.cookies?.getAll) {
+        return 0;
+      }
+
+      let removedCount = 0;
+      const stores = chromeApi.cookies.getAllCookieStores
+        ? await chromeApi.cookies.getAllCookieStores()
+        : [{ id: undefined }];
+
+      for (const store of stores) {
+        const storeId = store?.id || undefined;
+        for (const domain of OPENAI_COOKIE_CLEAR_DOMAINS) {
+          try {
+            const cookies = await chromeApi.cookies.getAll({ storeId, domain });
+            for (const cookie of cookies) {
+              const normalizedDomain = String(cookie?.domain || '').replace(/^\.+/, '').toLowerCase();
+              const isMatch = OPENAI_COOKIE_CLEAR_DOMAINS.some((target) => (
+                normalizedDomain === target || normalizedDomain.endsWith(`.${target}`)
+              ));
+              if (!isMatch) continue;
+
+              const host = normalizedDomain;
+              const path = String(cookie?.path || '/');
+              const url = `https://${host}${path.startsWith('/') ? path : `/${path}`}`;
+              try {
+                await chromeApi.cookies.remove({
+                  url,
+                  name: cookie.name,
+                  storeId,
+                  partitionKey: cookie.partitionKey,
+                });
+                removedCount += 1;
+              } catch {
+                // ignore individual removal errors
+              }
+            }
+          } catch {
+            // ignore query errors for domains that may not exist
+          }
+        }
+      }
+
+      try {
+        if (chromeApi.browsingData?.removeCookies) {
+          const origins = OPENAI_COOKIE_CLEAR_DOMAINS.map((d) => `https://${d}`);
+          await chromeApi.browsingData.removeCookies({ since: 0, origins });
+        }
+      } catch {
+        // ignore browsingData errors
+      }
+
+      return removedCount;
+    }
+
     function normalizeMessageFlowId(value = '', fallback = 'openai') {
       const rootScope = typeof self !== 'undefined' ? self : globalThis;
       if (typeof rootScope.MultiPageFlowRegistry?.normalizeFlowId === 'function') {
@@ -1966,6 +2031,113 @@
         case 'STOP_FLOW': {
           await requestStop();
           return { ok: true };
+        }
+
+        case 'SUB2API_LIST_ERROR_ACCOUNTS': {
+          const sub2ApiApi = self.MultiPageBackgroundSub2ApiApi?.createSub2ApiApi({
+            addLog,
+            normalizeSub2ApiUrl: (value) => value,
+            DEFAULT_SUB2API_GROUP_NAME: 'codex',
+          });
+          if (!sub2ApiApi) {
+            throw new Error('SUB2API 接口模块未加载。');
+          }
+          const state = await getState();
+          const accounts = await sub2ApiApi.listErrorAccounts(state, {
+            logLabel: '查询错误账号',
+            timeoutMs: 30000,
+          });
+          return { ok: true, accounts };
+        }
+
+        case 'START_SUB2API_REAUTH': {
+          const accounts = message.accounts || [];
+          if (!Array.isArray(accounts) || accounts.length === 0) {
+            throw new Error('缺少账号列表。');
+          }
+          clearStopRequest();
+          
+          const sub2ApiApi = self.MultiPageBackgroundSub2ApiApi?.createSub2ApiApi({
+            addLog,
+            normalizeSub2ApiUrl: (value) => value,
+            DEFAULT_SUB2API_GROUP_NAME: 'codex',
+          });
+          if (!sub2ApiApi) {
+            throw new Error('SUB2API 接口模块未加载。');
+          }
+          
+          const totalAccounts = accounts.length;
+          await addLog(`批量重新授权：共 ${totalAccounts} 个账号待处理`, 'info');
+          
+          const results = [];
+          for (let i = 0; i < accounts.length; i++) {
+            const account = accounts[i];
+            const accountId = account.id;
+            const accountEmail = account.email || '';
+            const progress = `[${i + 1}/${totalAccounts}]`;
+            
+            try {
+              await addLog(`${progress} 开始处理账号 #${accountId}（${accountEmail || '未知邮箱'}）`, 'info');
+              
+              const clearedCount = await clearOpenAiCookies();
+              if (clearedCount > 0) {
+                await addLog(`${progress} 已清除 ${clearedCount} 个 OpenAI cookie`, 'info');
+              }
+              
+              const currentState = await getState();
+              const oauthResult = await sub2ApiApi.generateOpenAiAuthUrl(currentState, {
+                logLabel: `${progress} 重新授权`,
+                timeoutMs: 30000,
+              });
+              
+              await setState({
+                selectedAccountId: accountId,
+                oauthUrl: oauthResult.oauthUrl,
+                sub2apiSessionId: oauthResult.sub2apiSessionId,
+                sub2apiOAuthState: oauthResult.sub2apiOAuthState,
+                sub2apiGroupId: oauthResult.sub2apiGroupId,
+                sub2apiGroupIds: oauthResult.sub2apiGroupIds,
+                sub2apiDraftName: oauthResult.sub2apiDraftName,
+                sub2apiProxyId: oauthResult.sub2apiProxyId,
+                email: accountEmail || undefined,
+                stepExecutionRangeByFlow: {
+                  openai: { fromStep: 7, toStep: 10 }
+                }
+              });
+              
+              await addLog(`${progress} 已生成 OAuth 链接，开始执行登录流程...`, 'ok');
+              
+              if (typeof runAutoSequenceFromNode === 'function') {
+                await runAutoSequenceFromNode('oauth-login', { mode: 'restart' });
+              } else if (typeof startAutoRunLoop === 'function') {
+                startAutoRunLoop(1, { autoRunSkipFailures: false, mode: 'restart' });
+              }
+              
+              results.push({ accountId, success: true });
+              await addLog(`${progress} 账号 #${accountId} 重新授权完成`, 'ok');
+            } catch (error) {
+              results.push({ accountId, success: false, error: error.message });
+              await addLog(`${progress} 账号 #${accountId} 重新授权失败: ${error.message}`, 'error');
+            }
+            
+            try {
+              await closeLocalhostCallbackTabs('');
+            } catch {
+              // ignore tab cleanup errors
+            }
+            
+            if (i < accounts.length - 1) {
+              await resetState();
+              await addLog(`已重置状态，准备处理下一个账号...`, 'info');
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+          
+          const successCount = results.filter(r => r.success).length;
+          const failCount = results.filter(r => !r.success).length;
+          await addLog(`批量重新授权完成：成功 ${successCount} 个，失败 ${failCount} 个`, failCount > 0 ? 'warn' : 'ok');
+          
+          return { ok: true, results };
         }
 
         default:

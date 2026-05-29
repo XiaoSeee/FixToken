@@ -438,6 +438,13 @@ header {
 }
 .btn-danger:hover { opacity: 0.9; box-shadow: 0 2px 8px var(--red-soft); }
 
+.btn-warning {
+  background: var(--orange);
+  color: #fff;
+}
+.btn-warning:hover { opacity: 0.9; box-shadow: 0 2px 8px var(--orange-soft); }
+.btn-warning:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
+
 .run-group {
   display: flex;
   align-items: center;
@@ -3628,6 +3635,153 @@ header {
 @keyframes toastOut {
   from { opacity: 1; transform: translateY(0) scale(1); }
   to { opacity: 0; transform: translateY(-10px) scale(0.96); }
+}
+
+.reauth-dialog {
+  width: min(100%, 380px);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md), 0 18px 36px rgba(0, 0, 0, 0.18);
+  padding: 16px;
+}
+.reauth-dialog h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+}
+.reauth-select-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.reauth-select-actions .btn-sm {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.reauth-account-list {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+.reauth-account-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.reauth-account-item:hover { background: var(--bg-hover); }
+.reauth-account-item input[type="checkbox"] {
+  accent-color: var(--blue);
+  flex-shrink: 0;
+}
+.reauth-account-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reauth-account-error {
+  font-size: 11px;
+  color: var(--red);
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reauth-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.reauth-card {
+  margin-top: 10px;
+}
+.reauth-account-list-container {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+.reauth-empty-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 16px 0;
+}
+.reauth-account-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition);
+}
+.reauth-account-item:hover {
+  background: var(--bg-hover);
+}
+.reauth-account-item input[type="checkbox"] {
+  accent-color: var(--blue);
+  flex-shrink: 0;
+}
+.reauth-account-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reauth-account-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.reauth-account-status.pending {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+.reauth-account-status.processing {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+.reauth-account-status.success {
+  background: var(--green-soft);
+  color: var(--green);
+}
+.reauth-account-status.failed {
+  background: var(--red-soft);
+  color: var(--red);
+}
+.reauth-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.reauth-select-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.reauth-select-actions .btn-xs {
+  font-size: 11px;
 }
 
 @media (prefers-reduced-motion: reduce) {
