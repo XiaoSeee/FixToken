@@ -151,11 +151,13 @@
       pollContributionStatus,
       submitFlowContribution,
       registerTab,
+      clearCurrentAutoRunSessionId,
       requestStop,
       probeIpProxyExit,
       handleCloudflareSecurityBlocked,
       resetState,
       resumeAutoRun,
+      runAutoSequenceFromNode,
       selectLuckmailPurchase,
       switchIpProxy,
       changeIpProxyExit,
@@ -255,6 +257,59 @@
       }
 
       return removedCount;
+    }
+
+    /**
+     * 判断批量 SUB2API 重新授权开始前是否存在旧的自动运行上下文。
+     *
+     * 重新授权入口会独立驱动 OAuth 尾链；如果上一次普通自动运行还在等待
+     * 重试计时、节点完成信号或内容脚本响应，直接清除停止标记会让旧流程
+     * 重新醒来，造成日志中“批量任务已经失败，稍后步骤 7 又自动开始”的错乱现象。
+     *
+     * @param {object} state 当前后台运行态快照。
+     * @returns {boolean} 存在需要接管并清理的旧自动运行上下文时返回 true。
+     */
+    function hasExistingAutomationContextBeforeSub2ApiReauth(state = {}) {
+      const pendingTimerPlan = typeof getPendingAutoRunTimerPlan === 'function'
+        ? getPendingAutoRunTimerPlan(state)
+        : state?.autoRunTimerPlan;
+      const hasRunningNode = Object.values(state?.nodeStatuses || {})
+        .some((status) => String(status || '').trim() === 'running');
+      const lockedByAutoRun = typeof isAutoRunLockedState === 'function'
+        ? isAutoRunLockedState(state)
+        : Boolean(state?.autoRunning && state?.autoRunPhase !== 'idle');
+      return Boolean(pendingTimerPlan || hasRunningNode || lockedByAutoRun);
+    }
+
+    /**
+     * 在批量 SUB2API 重新授权接管前清理旧自动运行。
+     *
+     * 该方法只在检测到旧上下文时调用停止流程，并在停止完成后重新放开停止标记，
+     * 让当前批量重新授权可以继续执行；同时清掉持久化计时计划，避免旧 alarm 或
+     * restore 逻辑在稍后再次启动普通自动运行。
+     *
+     * @returns {Promise<void>} 旧自动运行上下文清理完成后返回。
+     */
+    async function prepareExclusiveSub2ApiReauthRun() {
+      const state = await getState();
+      if (typeof clearCurrentAutoRunSessionId === 'function') {
+        clearCurrentAutoRunSessionId();
+      }
+      if (hasExistingAutomationContextBeforeSub2ApiReauth(state)) {
+        if (typeof requestStop === 'function') {
+          await requestStop({ logMessage: '批量重新授权：已接管当前自动流程，正在停止旧的自动运行上下文...' });
+        }
+        if (typeof clearAutoRunTimerAlarm === 'function') {
+          await clearAutoRunTimerAlarm();
+        }
+        await setState({
+          autoRunning: false,
+          autoRunPhase: 'idle',
+          autoRunSessionId: 0,
+          autoRunTimerPlan: null,
+        });
+      }
+      clearStopRequest();
     }
 
     function normalizeMessageFlowId(value = '', fallback = 'openai') {
@@ -2055,7 +2110,7 @@
           if (!Array.isArray(accounts) || accounts.length === 0) {
             throw new Error('缺少账号列表。');
           }
-          clearStopRequest();
+          await prepareExclusiveSub2ApiReauthRun();
           
           const sub2ApiApi = self.MultiPageBackgroundSub2ApiApi?.createSub2ApiApi({
             addLog,
@@ -2068,15 +2123,110 @@
           
           const totalAccounts = accounts.length;
           await addLog(`批量重新授权：共 ${totalAccounts} 个账号待处理`, 'info');
+
+          /**
+           * 标准化批量重新授权链路中的文本字段。
+           *
+           * @param {string} value SUB2API 返回或用户输入的原始文本。
+           * @returns {string} 去掉首尾空白后的文本。
+           */
+          const normalizeReauthString = (value = '') => String(value || '').trim();
+          /**
+           * 从任意文本中提取第一个邮箱地址。
+           *
+           * @param {string} value 可能包含邮箱的文本。
+           * @returns {string} 小写邮箱；未匹配时返回空字符串。
+           */
+          const extractEmailFromText = (value = '') => {
+            const match = normalizeReauthString(value).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+            return match ? match[0].toLowerCase() : '';
+          };
+          /**
+           * 尝试把 SUB2API 的字符串字段解析为 JSON 对象。
+           *
+           * @param {string} value 可能是 JSON 的 credentials / extra 字段。
+           * @returns {object|null} 解析成功的对象；非 JSON 或解析失败时返回 null。
+           */
+          const parseMaybeJsonObject = (value = '') => {
+            const text = normalizeReauthString(value);
+            if (!text || !/^[{\[]/.test(text)) {
+              return null;
+            }
+            try {
+              return JSON.parse(text);
+            } catch {
+              return null;
+            }
+          };
+          /**
+           * 从 SUB2API 错误账号记录中解析 OpenAI OAuth 登录邮箱。
+           *
+           * @param {object} account SUB2API 返回的错误账号记录。
+           * @returns {string} 可用于 OpenAI 登录的邮箱；未找到时返回空字符串。
+           */
+          const resolveReauthAccountEmail = (account = {}) => {
+            const directCandidates = [
+              account.email,
+              account.account_email,
+              account.accountEmail,
+              account.username,
+              account.name,
+              account.credentials?.email,
+              account.credentials?.account_email,
+              account.extra?.email,
+              account.extra?.account_email,
+              account.metadata?.email,
+            ];
+            for (const candidate of directCandidates) {
+              const email = extractEmailFromText(candidate);
+              if (email) {
+                return email;
+              }
+            }
+
+            const parsedCredentials = typeof account.credentials === 'string'
+              ? parseMaybeJsonObject(account.credentials)
+              : null;
+            const parsedExtra = typeof account.extra === 'string'
+              ? parseMaybeJsonObject(account.extra)
+              : null;
+            for (const candidate of [parsedCredentials, parsedExtra]) {
+              const email = extractEmailFromText(candidate?.email || candidate?.account_email || candidate?.username);
+              if (email) {
+                return email;
+              }
+            }
+
+            return extractEmailFromText(JSON.stringify(account));
+          };
+
+          /**
+           * 判断当前账号的重新授权是否已经真正写回 SUB2API。
+           *
+           * @param {object} state 当前后台运行态。
+           * @param {string|number} accountId 当前正在处理的 SUB2API 账号 ID。
+           * @returns {boolean} 当前账号写回成功时返回 true。
+           */
+          const isSub2ApiReauthCompleted = (state = {}, accountId = '') => (
+            Boolean(state?.reauthCompleted)
+            && String(state?.selectedAccountId || '') === String(accountId || '')
+          );
           
           const results = [];
           for (let i = 0; i < accounts.length; i++) {
             const account = accounts[i];
             const accountId = account.id;
-            const accountEmail = account.email || '';
+            const accountEmail = resolveReauthAccountEmail(account);
             const progress = `[${i + 1}/${totalAccounts}]`;
             
             try {
+              await resetState();
+              await addLog(`${progress} 已重置当前步骤状态，准备从 OAuth 登录开始处理账号。`, 'info');
+
+              if (!accountEmail) {
+                throw new Error(`账号 #${accountId || 'unknown'} 未找到可用于 OpenAI OAuth 登录的邮箱，请检查 SUB2API 账号名称、email、credentials.email 或 extra.email 字段。`);
+              }
+
               await addLog(`${progress} 开始处理账号 #${accountId}（${accountEmail || '未知邮箱'}）`, 'info');
               
               const clearedCount = await clearOpenAiCookies();
@@ -2092,6 +2242,8 @@
               
               await setState({
                 selectedAccountId: accountId,
+                sub2apiReauthMode: true,
+                reauthCompleted: false,
                 oauthUrl: oauthResult.oauthUrl,
                 sub2apiSessionId: oauthResult.sub2apiSessionId,
                 sub2apiOAuthState: oauthResult.sub2apiOAuthState,
@@ -2099,18 +2251,36 @@
                 sub2apiGroupIds: oauthResult.sub2apiGroupIds,
                 sub2apiDraftName: oauthResult.sub2apiDraftName,
                 sub2apiProxyId: oauthResult.sub2apiProxyId,
-                email: accountEmail || undefined,
+                email: accountEmail,
+                accountIdentifierType: 'email',
+                accountIdentifier: accountEmail,
+                signupMethod: 'email',
+                resolvedSignupMethod: 'email',
                 stepExecutionRangeByFlow: {
-                  openai: { fromStep: 7, toStep: 10 }
+                  openai: { fromStep: 7, toStep: 11 }
                 }
               });
+              if (typeof setEmailStateSilently === 'function') {
+                await setEmailStateSilently(accountEmail, { source: 'sub2api-reauth' });
+              }
               
               await addLog(`${progress} 已生成 OAuth 链接，开始执行登录流程...`, 'ok');
               
               if (typeof runAutoSequenceFromNode === 'function') {
-                await runAutoSequenceFromNode('oauth-login', { mode: 'restart' });
+                await runAutoSequenceFromNode('oauth-login', {
+                  mode: 'restart',
+                  sub2apiReauthMode: true,
+                  selectedAccountId: accountId,
+                });
               } else if (typeof startAutoRunLoop === 'function') {
-                startAutoRunLoop(1, { autoRunSkipFailures: false, mode: 'restart' });
+                await startAutoRunLoop(1, { autoRunSkipFailures: false, mode: 'restart' });
+              } else {
+                throw new Error('后台缺少可用的自动流程执行器，无法完成重新授权。');
+              }
+
+              const finishedState = await getState();
+              if (!isSub2ApiReauthCompleted(finishedState, accountId)) {
+                throw new Error(`账号 #${accountId} 重新授权未确认写回 SUB2API，当前账号按失败处理。`);
               }
               
               results.push({ accountId, success: true });
@@ -2127,8 +2297,7 @@
             }
             
             if (i < accounts.length - 1) {
-              await resetState();
-              await addLog(`已重置状态，准备处理下一个账号...`, 'info');
+              await addLog(`准备处理下一个账号...`, 'info');
               await new Promise(resolve => setTimeout(resolve, 1000));
             }
           }

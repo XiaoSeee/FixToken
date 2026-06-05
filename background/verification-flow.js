@@ -1417,6 +1417,12 @@
             continue;
           }
 
+          // 重新授权链路不能接管手机号验证；验证码提交后出现该页面时直接让当前账号失败。
+          if (options.failOnPhoneVerificationRequired && submitResult.addPhonePage) {
+            const urlPart = submitResult.url ? ` URL: ${submitResult.url}` : '';
+            throw new Error(`步骤 ${completionStep}：验证码提交后进入手机号验证页，当前账号判定失败。${urlPart}`.trim());
+          }
+
           await setState({
             lastEmailTimestamp: result.emailTimestamp,
             [stateKey]: result.code,

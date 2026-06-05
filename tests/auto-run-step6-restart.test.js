@@ -254,6 +254,9 @@ function createHarness(options = {}) {
     idleLogCheckIntervalMs = 5000,
     hangStep = 0,
     hangBudget = 0,
+    autoRunSessionId = 0,
+    currentAutoRunSessionId = autoRunSessionId,
+    invalidateSessionBeforeFailure = false,
   } = options;
 
   return new Function(`
@@ -266,6 +269,7 @@ const AUTO_RUN_STEP_IDLE_LOG_TIMEOUT_MS = ${JSON.stringify(idleLogTimeoutMs)};
 const AUTO_RUN_STEP_IDLE_LOG_CHECK_INTERVAL_MS = ${JSON.stringify(idleLogCheckIntervalMs)};
 const AUTO_RUN_STEP_IDLE_RESTART_MAX_ATTEMPTS = 3;
 const AUTO_RUN_STEP_IDLE_RESTART_ERROR_PREFIX = 'AUTO_RUN_STEP_IDLE_RESTART::';
+const STOP_ERROR_MESSAGE = '流程已被用户停止。';
 const LOG_PREFIX = '[test]';
 const chrome = {
   tabs: {
@@ -275,6 +279,7 @@ const chrome = {
 
 let remainingFailures = ${JSON.stringify(failureBudget)};
 let remainingHangs = ${JSON.stringify(hangBudget)};
+let currentAutoRunSessionId = ${JSON.stringify(currentAutoRunSessionId)};
 const events = {
   steps: [],
   logs: [],
@@ -311,6 +316,13 @@ function getStepExecutionKeyForState(step, state = {}) {
 function isStopError(error) {
   return (error?.message || String(error || '')) === '流程已被用户停止。';
 }
+function throwIfStopped() {}
+function throwIfAutoRunSessionStopped(sessionId) {
+  if (sessionId && sessionId !== currentAutoRunSessionId) {
+    throw new Error(STOP_ERROR_MESSAGE);
+  }
+  throwIfStopped();
+}
 function isStepDoneStatus(status) {
   return status === 'completed' || status === 'manual_completed' || status === 'skipped';
 }
@@ -322,6 +334,9 @@ async function executeStepAndWait(step) {
   }
   if (step === ${JSON.stringify(failureStep)} && remainingFailures > 0) {
     remainingFailures -= 1;
+    if (${JSON.stringify(invalidateSessionBeforeFailure)}) {
+      currentAutoRunSessionId = 0;
+    }
     throw new Error(${JSON.stringify(failureMessage)});
   }
 }
@@ -364,6 +379,7 @@ return {
       totalRuns: 1,
       attemptRuns: 1,
       continued: false,
+      autoRunSessionId: ${JSON.stringify(autoRunSessionId)},
     });
     return events;
   },
@@ -374,6 +390,7 @@ return {
         totalRuns: 1,
         attemptRuns: 1,
         continued: false,
+        autoRunSessionId: ${JSON.stringify(autoRunSessionId)},
       });
       return null;
     } catch (error) {
@@ -1002,4 +1019,49 @@ test('auto-run does not reroute SUB2API session import failures into OAuth resta
   assert.deepStrictEqual(result.events.steps, [10]);
   assert.equal(result.events.invalidations.length, 0);
   assert.ok(!result.events.logs.some(({ message }) => /回到节点 oauth-login|回到节点 confirm-oauth|重新开始授权流程/.test(message)));
+});
+
+test('auto-run does not restart OAuth chain for SUB2API reauth account failures', async () => {
+  const harness = createHarness({
+    startStep: 7,
+    failureStep: 7,
+    failureBudget: 1,
+    failureMessage: '缺少登录账号：请先完成步骤 2，或在侧栏“注册邮箱/注册手机号”中手动填写账号后再执行当前步骤。',
+    authState: null,
+    customState: {
+      activeFlowId: 'openai',
+      targetId: 'sub2api',
+      selectedAccountId: 'account-103',
+      sub2apiReauthMode: true,
+      stepStatuses: {},
+    },
+  });
+
+  const result = await harness.runAndCaptureError();
+
+  assert.ok(result?.error);
+  assert.match(result.error.message, /缺少登录账号/);
+  assert.deepStrictEqual(result.events.steps, [7]);
+  assert.equal(result.events.invalidations.length, 0);
+  assert.ok(!result.events.logs.some(({ message }) => /回到节点 oauth-login|重新开始授权流程/.test(message)));
+});
+
+test('auto-run stale session stops before OAuth restart after SUB2API reauth takeover', async () => {
+  const harness = createHarness({
+    startStep: 7,
+    failureStep: 7,
+    failureBudget: 1,
+    failureMessage: '缺少登录账号：请先完成步骤 2，或在侧栏“注册邮箱/注册手机号”中手动填写账号后再执行当前步骤。',
+    autoRunSessionId: 77,
+    currentAutoRunSessionId: 77,
+    invalidateSessionBeforeFailure: true,
+  });
+
+  const result = await harness.runAndCaptureError();
+
+  assert.ok(result?.error);
+  assert.equal(result.error.message, '流程已被用户停止。');
+  assert.deepStrictEqual(result.events.steps, [7]);
+  assert.equal(result.events.invalidations.length, 0);
+  assert.ok(!result.events.logs.some(({ message }) => /正在确认当前认证页状态|回到节点 oauth-login|重新开始授权流程/.test(message)));
 });

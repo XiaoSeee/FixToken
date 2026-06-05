@@ -341,6 +341,29 @@
       return /add-phone|手机号页面|手机号验证页|phone[\s-_]verification|phone\s+number/i.test(message);
     }
 
+    /**
+     * 判断当前登录验证码步骤是否属于 SUB2API 原账号重新授权链路。
+     *
+     * @param {object} state 当前后台运行态。
+     * @returns {boolean} 需要将手机号验证页视为账号失败时返回 true。
+     */
+    function isSub2ApiReauthMode(state = {}) {
+      const targetId = String(state?.targetId || '').trim().toLowerCase();
+      return Boolean(state?.sub2apiReauthMode || (state?.selectedAccountId && targetId === 'sub2api'));
+    }
+
+    /**
+     * 构造重新授权流程遇到手机号验证页时的失败错误。
+     *
+     * @param {number} visibleStep 当前可见步骤号。
+     * @param {object} pageState 内容脚本识别出的认证页状态。
+     * @returns {Error} 可直接抛出的账号失败错误。
+     */
+    function buildSub2ApiReauthPhonePageError(visibleStep, pageState = {}) {
+      const urlPart = pageState?.url ? ` URL: ${pageState.url}` : '';
+      return new Error(`步骤 ${visibleStep}：重新授权模式检测到 OpenAI 要求验证手机号，当前账号判定失败。${urlPart}`.trim());
+    }
+
     async function recoverStep8PollingFailure(currentState, visibleStep) {
       const authLoginStep = getAuthLoginStepForState(currentState, visibleStep);
       try {
@@ -658,6 +681,7 @@
           }
         },
         targetEmail: fixedTargetEmail,
+        failOnPhoneVerificationRequired: isSub2ApiReauthMode(preparedState),
         maxResendRequests: mail.provider === '2925' ? 2 : undefined,
         initialPollMaxAttempts: mail.provider === '2925' ? 5 : undefined,
         pollAttemptPlan: mail.provider === '2925' ? [2, 3, 15] : undefined,
@@ -817,6 +841,9 @@
         throw new Error(`步骤 ${visibleStep}：手机号注册模式登录验证码步骤进入了不允许的页面：${pageState?.state || 'unknown'}。URL: ${pageState?.url || ''}`.trim());
       }
 
+      if (isSub2ApiReauthMode(state) && (pageState?.state === 'add_phone_page' || pageState?.state === 'phone_verification_page')) {
+        throw buildSub2ApiReauthPhonePageError(visibleStep, pageState);
+      }
       if (pageState?.state === 'add_phone_page' || pageState?.state === 'phone_verification_page') {
         await completeStep8WhenDeferredToPostLoginPhone(visibleStep, pageState, { nodeId: state?.nodeId });
         return;

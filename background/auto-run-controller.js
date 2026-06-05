@@ -697,6 +697,7 @@
               totalRuns,
               attemptRuns: attemptRun,
               continued: useExistingProgress,
+              autoRunSessionId: sessionId,
             });
 
             roundSummary.status = 'success';

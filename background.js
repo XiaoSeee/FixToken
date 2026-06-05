@@ -12787,6 +12787,7 @@ function getAutoRunWorkflowNodeIds(state = {}) {
 
 async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
   const { targetRun, totalRuns, attemptRuns, continued = false } = context;
+  const graphAutoRunSessionId = Math.floor(Number(context?.autoRunSessionId) || 0);
   let postStep7RestartCount = 0;
   let goPayCheckoutRestartCount = 0;
   let gpcCheckoutRestartCount = 0;
@@ -12796,6 +12797,13 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
   let currentStartNodeId = String(startNodeId || '').trim();
   let continueCurrentAttempt = continued;
   const resolvedSignupMethod = await ensureResolvedSignupMethodForRun();
+  const throwIfGraphAutoRunSessionStopped = () => {
+    if (graphAutoRunSessionId > 0 && typeof throwIfAutoRunSessionStopped === 'function') {
+      throwIfAutoRunSessionStopped(graphAutoRunSessionId);
+    } else if (typeof throwIfStopped === 'function') {
+      throwIfStopped();
+    }
+  };
   const normalizePlusPaymentMethodForRun = typeof normalizePlusPaymentMethod === 'function'
     ? normalizePlusPaymentMethod
     : (value) => (String(value || '').trim().toLowerCase() === 'gpc-helper' ? 'gpc-helper' : String(value || '').trim().toLowerCase());
@@ -12944,6 +12952,7 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
       let nodeIndex = Math.max(0, getNodeIndex(latestState, currentStartNodeId));
 
       while (nodeIndex < nodeIds.length) {
+        throwIfGraphAutoRunSessionStopped();
         latestState = await getState();
         nodeIds = getAutoRunWorkflowNodeIds(latestState);
         const nodeId = nodeIds[nodeIndex];
@@ -12965,8 +12974,10 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
 
         try {
           await executeNodeAndWaitWithAutoRunIdleLogWatchdog(nodeId, getAutoRunNodeDelayMs(nodeId));
+          throwIfGraphAutoRunSessionStopped();
           nodeIndex += 1;
         } catch (err) {
+          throwIfGraphAutoRunSessionStopped();
           attachFailedNode(err, nodeId, latestState);
           if (isStopError(err)) {
             throw err;
@@ -12989,6 +13000,7 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
 
   while (true) {
 
+  throwIfGraphAutoRunSessionStopped();
   if (continueCurrentAttempt) {
     await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：继续当前进度，从节点 ${currentStartNodeId} 开始（第 ${attemptRuns} 次尝试）===`, 'info');
   } else {
@@ -12998,7 +13010,9 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
   if (await shouldRunNamedNode('open-chatgpt')) {
     try {
       await executeNodeAndWaitWithAutoRunIdleLogWatchdog('open-chatgpt', getAutoRunNodeDelayMs('open-chatgpt'));
+      throwIfGraphAutoRunSessionStopped();
     } catch (err) {
+      throwIfGraphAutoRunSessionStopped();
       attachFailedNode(err, 'open-chatgpt', await getState());
       if (isStopError(err)) {
         throw err;
@@ -13019,8 +13033,10 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
           await ensureAutoEmailReady(targetRun, totalRuns, attemptRuns);
         }
         await executeNodeAndWait('submit-signup-email', getAutoRunNodeDelayMs('submit-signup-email'));
+        throwIfGraphAutoRunSessionStopped();
       });
     } catch (err) {
+      throwIfGraphAutoRunSessionStopped();
       attachFailedNode(err, 'submit-signup-email', await getState());
       if (isStopError(err)) {
         throw err;
@@ -13048,7 +13064,9 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
     } else {
       try {
         await executeNodeAndWaitWithAutoRunIdleLogWatchdog('fill-password', getAutoRunNodeDelayMs('fill-password'));
+        throwIfGraphAutoRunSessionStopped();
       } catch (err) {
+        throwIfGraphAutoRunSessionStopped();
         attachFailedNode(err, 'fill-password', latestState);
         if (isStopError(err)) {
           throw err;
@@ -13088,6 +13106,7 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
     firstVerificationIndex >= 0 ? firstVerificationIndex : 0
   );
   while (nodeIndex < nodeIds.length) {
+    throwIfGraphAutoRunSessionStopped();
     const latestState = await getState();
     nodeIds = getAutoRunWorkflowNodeIds(latestState);
     const nodeId = nodeIds[nodeIndex];
@@ -13107,8 +13126,10 @@ async function runAutoSequenceFromNodeGraph(startNodeId, context = {}) {
     }
     try {
       await executeNodeAndWaitWithAutoRunIdleLogWatchdog(nodeId, getAutoRunNodeDelayMs(nodeId));
+      throwIfGraphAutoRunSessionStopped();
       nodeIndex += 1;
     } catch (err) {
+      throwIfGraphAutoRunSessionStopped();
       attachFailedNode(err, nodeId, latestState);
       if (isStopError(err)) {
         throw err;
@@ -14057,6 +14078,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   clearAccountRunHistory: (...args) => clearAndBroadcastAccountRunHistory(...args),
   deleteAccountRunHistoryRecords: (...args) => deleteAndBroadcastAccountRunHistoryRecords(...args),
   clearAutoRunTimerAlarm,
+  clearCurrentAutoRunSessionId,
   clearFreeReusablePhoneActivation,
   clearGrokSsoCookies,
   clearLuckmailRuntimeState,
@@ -14168,6 +14190,7 @@ const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter
   probeIpProxyExit,
   resetState,
   resumeAutoRun,
+  runAutoSequenceFromNode,
   selectLuckmailPurchase,
   switchIpProxy,
   changeIpProxyExit,
@@ -14774,6 +14797,17 @@ async function getPostStep6AutoRestartDecision(step, error) {
     : (isBoundEmailReloginTailStep && Number.isFinite(boundEmailReloginStep) && boundEmailReloginStep > 0
       ? boundEmailReloginStep
       : authChainStartStep);
+  if (latestState?.sub2apiReauthMode) {
+    // SUB2API 重新授权由批量入口逐个账号接管，账号级失败应直接返回外层循环。
+    return {
+      shouldRestart: false,
+      blockedByAddPhone: false,
+      forcedByPhoneVerificationTimeout: false,
+      restartStep: authChainStartStep,
+      errorMessage,
+      authState: null,
+    };
+  }
   if (isPhoneSmsPlatformRateLimitFailure(errorMessage)) {
     return {
       shouldRestart: false,

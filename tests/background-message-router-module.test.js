@@ -7,6 +7,17 @@ test('background imports message router module', () => {
   assert.match(source, /background\/message-router\.js/);
 });
 
+test('background wires direct node sequence runner into message router', () => {
+  const source = fs.readFileSync('background.js', 'utf8');
+  const routerStart = source.indexOf('const messageRouter = self.MultiPageBackgroundMessageRouter?.createMessageRouter({');
+  const routerEnd = source.indexOf('function buildNodeRegistry', routerStart);
+  const routerDepsBlock = source.slice(routerStart, routerEnd);
+
+  assert.ok(routerStart >= 0, 'expected background to create the message router');
+  assert.ok(routerEnd > routerStart, 'expected to capture the full message router dependency block');
+  assert.match(routerDepsBlock, /\brunAutoSequenceFromNode\b/);
+});
+
 test('background defaults enable free phone reuse switches', () => {
   const source = fs.readFileSync('background.js', 'utf8');
   const defaultsStart = source.indexOf('const PERSISTED_SETTING_DEFAULTS = {');
@@ -1023,4 +1034,200 @@ test('SAVE_SETTING applies shared mode-switch normalization before persisting in
     signupMethod: 'email',
   });
   assert.equal(response.modeValidation?.errors?.[0]?.code, 'plus_mode_unsupported');
+});
+
+test('START_SUB2API_REAUTH fails phone verification account and continues next account', async () => {
+  const source = fs.readFileSync('background/message-router.js', 'utf8');
+  const globalScope = {
+    console,
+    MultiPageBackgroundSub2ApiApi: {
+      createSub2ApiApi: () => ({
+        generateOpenAiAuthUrl: async () => ({
+          oauthUrl: 'https://auth.openai.com/oauth/test',
+          sub2apiSessionId: 'session-1',
+          sub2apiOAuthState: 'oauth-state',
+          sub2apiGroupId: 'group-1',
+          sub2apiGroupIds: ['group-1'],
+          sub2apiDraftName: 'draft',
+          sub2apiProxyId: '',
+        }),
+      }),
+    },
+  };
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundMessageRouter;`)(globalScope);
+  const logs = [];
+  const runCalls = [];
+  let runCount = 0;
+  let resetCount = 0;
+  let state = {
+    activeFlowId: 'openai',
+    targetId: 'sub2api',
+    currentNodeId: 'fetch-login-code',
+    nodeStatuses: {
+      'oauth-login': 'completed',
+      'fetch-login-code': 'running',
+    },
+    sub2apiUrl: 'https://sub2api.example.com',
+    sub2apiEmail: 'admin@example.com',
+    sub2apiPassword: 'secret',
+  };
+
+  const router = api.createMessageRouter({
+    addLog: async (message, level) => logs.push({ message, level }),
+    clearStopRequest: () => {},
+    closeLocalhostCallbackTabs: async () => {},
+    getState: async () => ({ ...state }),
+    resetState: async () => {
+      resetCount += 1;
+      state = {
+        activeFlowId: 'openai',
+        targetId: 'sub2api',
+        sub2apiUrl: 'https://sub2api.example.com',
+        sub2apiEmail: 'admin@example.com',
+        sub2apiPassword: 'secret',
+      };
+    },
+    runAutoSequenceFromNode: async (nodeId, context) => {
+      runCount += 1;
+      runCalls.push({ nodeId, context, state: { ...state } });
+      if (runCount === 1) {
+        throw new Error('步骤 8：验证码提交后进入手机号验证页，当前账号判定失败。 URL: https://auth.openai.com/phone-otp/select-channel');
+      }
+      state = { ...state, reauthCompleted: true };
+    },
+    setEmailStateSilently: async (email) => {
+      state = { ...state, email };
+    },
+    setState: async (updates) => {
+      state = { ...state, ...updates };
+    },
+  });
+
+  const response = await router.handleMessage({
+    type: 'START_SUB2API_REAUTH',
+    accounts: [
+      { id: 'account-1', email: 'first@example.com' },
+      { id: 'account-2', email: 'second@example.com' },
+    ],
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.results.length, 2);
+  assert.equal(response.results[0].success, false);
+  assert.match(response.results[0].error, /手机号验证页|当前账号判定失败/);
+  assert.equal(response.results[1].success, true);
+  assert.equal(resetCount, 2);
+  assert.equal(runCalls[0].nodeId, 'oauth-login');
+  assert.deepEqual(runCalls[0].context, {
+    mode: 'restart',
+    sub2apiReauthMode: true,
+    selectedAccountId: 'account-1',
+  });
+  assert.equal(runCalls[0].state.currentNodeId, undefined);
+  assert.equal(runCalls[0].state.nodeStatuses, undefined);
+  assert.equal(runCalls[0].state.sub2apiReauthMode, true);
+  assert.equal(runCalls[0].state.stepExecutionRangeByFlow.openai.toStep, 11);
+  assert.ok(logs.some((entry) => /失败 1 个/.test(entry.message)));
+});
+
+test('START_SUB2API_REAUTH clears pending auto-run context before processing accounts', async () => {
+  const source = fs.readFileSync('background/message-router.js', 'utf8');
+  const globalScope = {
+    console,
+    MultiPageBackgroundSub2ApiApi: {
+      createSub2ApiApi: () => ({
+        generateOpenAiAuthUrl: async () => ({
+          oauthUrl: 'https://auth.openai.com/oauth/test',
+          sub2apiSessionId: 'session-1',
+          sub2apiOAuthState: 'oauth-state',
+          sub2apiGroupId: 'group-1',
+          sub2apiGroupIds: ['group-1'],
+          sub2apiDraftName: 'draft',
+          sub2apiProxyId: '',
+        }),
+      }),
+    },
+  };
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundMessageRouter;`)(globalScope);
+  const cleanupCalls = [];
+  const stateUpdates = [];
+  let state = {
+    activeFlowId: 'openai',
+    targetId: 'sub2api',
+    autoRunning: true,
+    autoRunPhase: 'waiting_interval',
+    autoRunSessionId: 123,
+    autoRunTimerPlan: {
+      kind: 'before_retry',
+      fireAt: Date.now() + 60000,
+      currentRun: 1,
+      totalRuns: 1,
+      attemptRun: 2,
+    },
+    sub2apiUrl: 'https://sub2api.example.com',
+    sub2apiEmail: 'admin@example.com',
+    sub2apiPassword: 'secret',
+  };
+
+  const router = api.createMessageRouter({
+    addLog: async () => {},
+    clearAutoRunTimerAlarm: async () => {
+      cleanupCalls.push('clearAutoRunTimerAlarm');
+    },
+    clearStopRequest: () => {
+      cleanupCalls.push('clearStopRequest');
+    },
+    closeLocalhostCallbackTabs: async () => {},
+    getPendingAutoRunTimerPlan: (snapshot = {}) => snapshot.autoRunTimerPlan || null,
+    getState: async () => ({ ...state }),
+    isAutoRunLockedState: (snapshot = {}) => Boolean(snapshot.autoRunning),
+    requestStop: async (options = {}) => {
+      cleanupCalls.push({ type: 'requestStop', logMessage: options.logMessage });
+      state = {
+        ...state,
+        autoRunning: false,
+        autoRunPhase: 'idle',
+        autoRunSessionId: 0,
+        autoRunTimerPlan: null,
+      };
+    },
+    resetState: async () => {
+      state = {
+        activeFlowId: 'openai',
+        targetId: 'sub2api',
+        sub2apiUrl: 'https://sub2api.example.com',
+        sub2apiEmail: 'admin@example.com',
+        sub2apiPassword: 'secret',
+      };
+    },
+    runAutoSequenceFromNode: async () => {
+      state = { ...state, reauthCompleted: true };
+    },
+    setEmailStateSilently: async (email) => {
+      state = { ...state, email };
+    },
+    setState: async (updates) => {
+      stateUpdates.push({ ...updates });
+      state = { ...state, ...updates };
+    },
+  });
+
+  const response = await router.handleMessage({
+    type: 'START_SUB2API_REAUTH',
+    accounts: [
+      { id: 'account-1', email: 'first@example.com' },
+    ],
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.results[0].success, true);
+  assert.ok(cleanupCalls.some((entry) => entry?.type === 'requestStop'));
+  assert.ok(cleanupCalls.includes('clearAutoRunTimerAlarm'));
+  assert.ok(cleanupCalls.includes('clearStopRequest'));
+  assert.ok(stateUpdates.some((updates) => (
+    updates.autoRunning === false
+    && updates.autoRunPhase === 'idle'
+    && updates.autoRunSessionId === 0
+    && updates.autoRunTimerPlan === null
+  )));
 });

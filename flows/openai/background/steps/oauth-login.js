@@ -166,6 +166,29 @@
       return getStep7ResultState(result) === 'verification_page' && !isStep7PhoneVerificationResult(result);
     }
 
+    /**
+     * 判断当前 OAuth 登录是否属于 SUB2API 原账号重新授权链路。
+     *
+     * @param {object} state 当前后台运行态。
+     * @returns {boolean} 需要按重新授权规则处理时返回 true。
+     */
+    function isSub2ApiReauthMode(state = {}) {
+      const targetId = String(state?.targetId || '').trim().toLowerCase();
+      return Boolean(state?.sub2apiReauthMode || (state?.selectedAccountId && targetId === 'sub2api'));
+    }
+
+    /**
+     * 构造重新授权遇到手机号验证页时的失败错误。
+     *
+     * @param {number} step 当前可见步骤号。
+     * @param {object} result 内容脚本返回的认证页状态。
+     * @returns {Error} 可直接抛出的账号失败错误。
+     */
+    function buildSub2ApiReauthPhonePageError(step, result = {}) {
+      const urlPart = result?.url ? ` URL: ${result.url}` : '';
+      return new Error(`步骤 ${step}：重新授权模式检测到 OpenAI 要求验证手机号，当前账号判定失败。${urlPart}`.trim());
+    }
+
     function buildStep7CompletionPayload(result = {}, currentState = {}, currentIdentifierType = '', currentPhoneNumber = '') {
       const phoneSignupMode = currentIdentifierType === 'phone';
       const payload = {
@@ -206,6 +229,9 @@
 
       if (isStep7AddEmailResult(result)) {
         throw new Error(`步骤 ${completionStepForState(currentState)}：邮箱注册模式 OAuth 登录不应进入添加邮箱页。URL: ${result?.url || ''}`.trim());
+      }
+      if (isSub2ApiReauthMode(currentState) && (isStep7AddPhoneResult(result) || isStep7PhoneVerificationResult(result))) {
+        throw buildSub2ApiReauthPhonePageError(completionStepForState(currentState), result);
       }
       if (isStep7AddPhoneResult(result) || isStep7PhoneVerificationResult(result)) {
         payload.skipLoginVerificationStep = true;

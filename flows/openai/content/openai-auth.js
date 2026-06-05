@@ -3150,15 +3150,16 @@ function isAddEmailPageReady() {
 function isPhoneVerificationPageReady() {
   const path = `${location.pathname || ''} ${location.href || ''}`;
   const isPhoneVerificationRoute = /\/phone-verification(?:[/?#]|$)/i.test(path);
+  const isPhoneOtpRoute = /\/phone-otp(?:[/?#]|\/)/i.test(path);
   const isContactVerificationRoute = /\/contact-verification(?:[/?#]|$)/i.test(path);
   if (isContactVerificationRoute && getContactVerificationServerErrorText()) {
     return false;
   }
-  if (isPhoneVerificationRoute || isContactVerificationRoute) {
+  if (isPhoneVerificationRoute || isPhoneOtpRoute || isContactVerificationRoute) {
     return true;
   }
 
-  const form = document.querySelector('form[action*="/phone-verification" i]');
+  const form = document.querySelector('form[action*="/phone-verification" i], form[action*="/phone-otp" i]');
   if (form && isVisibleElement(form)) {
     return true;
   }
@@ -3169,6 +3170,9 @@ function isPhoneVerificationPageReady() {
 
   const pageText = getPageTextSnapshot();
   const displayedPhone = getPhoneVerificationDisplayedPhone();
+  if (/验证您的手机号码|驗證您的手機號碼|verify\s+your\s+phone\s+number|verify\s+your\s+phone/i.test(pageText)) {
+    return true;
+  }
   return Boolean(getVerificationCodeTarget())
     && Boolean(displayedPhone)
     && /check\s+your\s+phone|phone\s+verification|verify\s+your\s+phone|sms|text\s+message|code\s+to\s+\+/.test(pageText);
@@ -5045,6 +5049,10 @@ async function waitForVerificationSubmitOutcome(step, timeout, options = {}) {
 
     if (step === 8 && isAddPhonePageReady()) {
       return { success: true, addPhonePage: true, url: location.href };
+    }
+
+    if (step === 8 && isPhoneVerificationPageReady()) {
+      return { success: true, addPhonePage: true, phoneVerificationPage: true, url: location.href };
     }
 
     await sleep(150);
