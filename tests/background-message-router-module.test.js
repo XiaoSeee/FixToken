@@ -1130,6 +1130,152 @@ test('START_SUB2API_REAUTH fails phone verification account and continues next a
   assert.ok(logs.some((entry) => /失败 1 个/.test(entry.message)));
 });
 
+test('START_SUB2API_REAUTH treats non-phone errors as incomplete and continues next account', async () => {
+  const source = fs.readFileSync('background/message-router.js', 'utf8');
+  const globalScope = {
+    console,
+    MultiPageBackgroundSub2ApiApi: {
+      createSub2ApiApi: () => ({
+        generateOpenAiAuthUrl: async () => ({
+          oauthUrl: 'https://auth.openai.com/oauth/test',
+          sub2apiSessionId: 'session-1',
+          sub2apiOAuthState: 'oauth-state',
+          sub2apiGroupId: 'group-1',
+          sub2apiGroupIds: ['group-1'],
+          sub2apiDraftName: 'draft',
+          sub2apiProxyId: '',
+        }),
+      }),
+    },
+  };
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundMessageRouter;`)(globalScope);
+  const logs = [];
+  let runCount = 0;
+  let state = {
+    activeFlowId: 'openai',
+    targetId: 'sub2api',
+    sub2apiUrl: 'https://sub2api.example.com',
+    sub2apiEmail: 'admin@example.com',
+    sub2apiPassword: 'secret',
+  };
+
+  const router = api.createMessageRouter({
+    addLog: async (message, level) => logs.push({ message, level }),
+    clearStopRequest: () => {},
+    closeLocalhostCallbackTabs: async () => {},
+    getState: async () => ({ ...state }),
+    resetState: async () => {
+      state = {
+        activeFlowId: 'openai',
+        targetId: 'sub2api',
+        sub2apiUrl: 'https://sub2api.example.com',
+        sub2apiEmail: 'admin@example.com',
+        sub2apiPassword: 'secret',
+      };
+    },
+    runAutoSequenceFromNode: async () => {
+      runCount += 1;
+      if (runCount === 1) {
+        throw new Error('步骤 8：验证码轮询超时，未拿到新的登录验证码。');
+      }
+      state = { ...state, reauthCompleted: true };
+    },
+    setEmailStateSilently: async (email) => {
+      state = { ...state, email };
+    },
+    setState: async (updates) => {
+      state = { ...state, ...updates };
+    },
+  });
+
+  const response = await router.handleMessage({
+    type: 'START_SUB2API_REAUTH',
+    accounts: [
+      { id: 'account-1', email: 'first@example.com' },
+      { id: 'account-2', email: 'second@example.com' },
+    ],
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.results[0].success, false);
+  assert.equal(response.results[0].status, 'incomplete');
+  assert.equal(response.results[0].failureRecorded, false);
+  assert.equal(response.results[1].success, true);
+  assert.equal(runCount, 2);
+  assert.ok(logs.some((entry) => /失败 0 个，未完成 1 个/.test(entry.message)));
+});
+
+test('START_SUB2API_REAUTH stops batch on user stop without recording failure', async () => {
+  const source = fs.readFileSync('background/message-router.js', 'utf8');
+  const globalScope = {
+    console,
+    MultiPageBackgroundSub2ApiApi: {
+      createSub2ApiApi: () => ({
+        generateOpenAiAuthUrl: async () => ({
+          oauthUrl: 'https://auth.openai.com/oauth/test',
+          sub2apiSessionId: 'session-1',
+          sub2apiOAuthState: 'oauth-state',
+          sub2apiGroupId: 'group-1',
+          sub2apiGroupIds: ['group-1'],
+          sub2apiDraftName: 'draft',
+          sub2apiProxyId: '',
+        }),
+      }),
+    },
+  };
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundMessageRouter;`)(globalScope);
+  let runCount = 0;
+  let state = {
+    activeFlowId: 'openai',
+    targetId: 'sub2api',
+    sub2apiUrl: 'https://sub2api.example.com',
+    sub2apiEmail: 'admin@example.com',
+    sub2apiPassword: 'secret',
+  };
+
+  const router = api.createMessageRouter({
+    addLog: async () => {},
+    clearStopRequest: () => {},
+    closeLocalhostCallbackTabs: async () => {},
+    getState: async () => ({ ...state }),
+    isStopError: (error) => error?.message === '流程已被用户停止。',
+    resetState: async () => {
+      state = {
+        activeFlowId: 'openai',
+        targetId: 'sub2api',
+        sub2apiUrl: 'https://sub2api.example.com',
+        sub2apiEmail: 'admin@example.com',
+        sub2apiPassword: 'secret',
+      };
+    },
+    runAutoSequenceFromNode: async () => {
+      runCount += 1;
+      throw new Error('流程已被用户停止。');
+    },
+    setEmailStateSilently: async (email) => {
+      state = { ...state, email };
+    },
+    setState: async (updates) => {
+      state = { ...state, ...updates };
+    },
+  });
+
+  const response = await router.handleMessage({
+    type: 'START_SUB2API_REAUTH',
+    accounts: [
+      { id: 'account-1', email: 'first@example.com' },
+      { id: 'account-2', email: 'second@example.com' },
+    ],
+  });
+
+  assert.equal(response.ok, true);
+  assert.equal(response.results.length, 1);
+  assert.equal(response.results[0].status, 'incomplete');
+  assert.equal(response.results[0].failureRecorded, false);
+  assert.equal(response.results[0].stopped, true);
+  assert.equal(runCount, 1);
+});
+
 test('START_SUB2API_REAUTH clears pending auto-run context before processing accounts', async () => {
   const source = fs.readFileSync('background/message-router.js', 'utf8');
   const globalScope = {

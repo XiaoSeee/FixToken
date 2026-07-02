@@ -374,6 +374,21 @@ function getSelectedAccounts() {
 }
 
 /**
+ * 判断后台返回的重新授权结果是否应该计入“失败记录”。
+ *
+ * 只有明确需要手机号验证的账号失败才会带 failureRecorded/status=failed；
+ * 未完成、用户停止、超时等结果不进入失败统计，也不会被“选失败记录”选中。
+ *
+ * @param {object} item 后台 START_SUB2API_REAUTH 返回的单账号结果。
+ * @returns {boolean} 应计入本地失败统计时返回 true。
+ */
+function shouldRecordReauthFailure(item = {}) {
+  return Boolean(item?.failureRecorded)
+    || item?.status === 'failed'
+    || Boolean(item?.phoneVerificationRequired);
+}
+
+/**
  * 渲染后台持久化日志。
  *
  * @param {Array<object>} logs 后台状态中的日志数组。
@@ -523,10 +538,14 @@ async function startReauth() {
       accounts: selectedAccounts,
     });
     const results = Array.isArray(response.results) ? response.results : [];
-    // 按账号回写本地统计：累加总次数、成功 / 失败计数，并记录最近一次结果。
+    // 按账号回写本地统计：只记录成功和明确手机号验证失败，未完成不改变统计。
     for (const item of results) {
       const id = String(item.accountId || '');
       if (!id) {
+        continue;
+      }
+      const recordFailure = shouldRecordReauthFailure(item);
+      if (!item.success && !recordFailure) {
         continue;
       }
       const stats = reauthStats[id] || {
@@ -549,8 +568,9 @@ async function startReauth() {
     }
     await saveReauthStats();
     const successCount = results.filter((item) => item.success).length;
-    const failCount = results.length - successCount;
-    dom.accountSummary.textContent = `批量重新授权结束：成功 ${successCount} 个，失败 ${failCount} 个。`;
+    const failCount = results.filter((item) => shouldRecordReauthFailure(item)).length;
+    const incompleteCount = results.filter((item) => !item.success && !shouldRecordReauthFailure(item)).length;
+    dom.accountSummary.textContent = `批量重新授权结束：成功 ${successCount} 个，失败 ${failCount} 个，未完成 ${incompleteCount} 个。`;
     renderAccounts();
     await refreshState();
   } catch (error) {

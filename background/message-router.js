@@ -2219,6 +2219,26 @@
             Boolean(state?.reauthCompleted)
             && String(state?.selectedAccountId || '') === String(accountId || '')
           );
+
+          /**
+           * 判断重新授权错误是否明确表示 OpenAI 要求当前账号补充手机号验证。
+           *
+           * 批量重新授权只有在命中该类错误时才把账号计为失败；用户停止、网络中断、
+           * 超时或未跑到写回步骤都只表示本次未完成，避免污染“失败记录”筛选。
+           *
+           * @param {Error|string} error 自动化链路抛出的错误对象或错误文本。
+           * @returns {boolean} 明确进入添加手机号或手机号验证页时返回 true。
+           */
+          const isExplicitSub2ApiReauthPhoneVerificationFailure = (error = null) => {
+            const message = normalizeReauthString(error?.message || error);
+            if (!message) {
+              return false;
+            }
+
+            return /https:\/\/auth\.openai\.com\/(?:add-phone|phone-verification|phone-otp)(?:[/?#]|$)/i.test(message)
+              || /\badd[_\s-]?phone\b|\bphone[\s_-]?verification\b|\bphone\s+number\s+verification\b|\bphone[_\s-]?otp\b/i.test(message)
+              || /要求验证手机号|需要验证手机号|手机号验证页|手机号页面|添加手机号页|出现手机号验证|进入(?:了|到)?手机号验证|进入(?:了|到)?手机号页面/i.test(message);
+          };
           
           const results = [];
           for (let i = 0; i < accounts.length; i++) {
@@ -2294,8 +2314,35 @@
               results.push({ accountId, success: true });
               await addLog(`${progress} 账号 #${accountId} 重新授权完成`, 'ok');
             } catch (error) {
-              results.push({ accountId, success: false, error: error.message });
-              await addLog(`${progress} 账号 #${accountId} 重新授权失败: ${error.message}`, 'error');
+              const errorMessage = error?.message || String(error || '未知错误');
+              const stoppedByUser = typeof isStopError === 'function'
+                ? isStopError(error)
+                : errorMessage === '流程已被用户停止。';
+              const phoneVerificationRequired = isExplicitSub2ApiReauthPhoneVerificationFailure(error);
+              if (phoneVerificationRequired) {
+                results.push({
+                  accountId,
+                  success: false,
+                  status: 'failed',
+                  failureRecorded: true,
+                  phoneVerificationRequired: true,
+                  error: errorMessage,
+                });
+                await addLog(`${progress} 账号 #${accountId} 重新授权失败：OpenAI 要求验证手机号。${errorMessage}`, 'error');
+              } else {
+                results.push({
+                  accountId,
+                  success: false,
+                  status: 'incomplete',
+                  failureRecorded: false,
+                  stopped: stoppedByUser,
+                  error: errorMessage,
+                });
+                await addLog(`${progress} 账号 #${accountId} 重新授权未完成，未记录为失败：${errorMessage}`, 'warn');
+                if (stoppedByUser) {
+                  break;
+                }
+              }
             }
             
             try {
@@ -2311,8 +2358,12 @@
           }
           
           const successCount = results.filter(r => r.success).length;
-          const failCount = results.filter(r => !r.success).length;
-          await addLog(`批量重新授权完成：成功 ${successCount} 个，失败 ${failCount} 个`, failCount > 0 ? 'warn' : 'ok');
+          const failCount = results.filter(r => r.failureRecorded || r.status === 'failed').length;
+          const incompleteCount = results.filter(r => !r.success && !(r.failureRecorded || r.status === 'failed')).length;
+          await addLog(
+            `批量重新授权完成：成功 ${successCount} 个，失败 ${failCount} 个，未完成 ${incompleteCount} 个`,
+            failCount > 0 || incompleteCount > 0 ? 'warn' : 'ok'
+          );
           
           return { ok: true, results };
         }

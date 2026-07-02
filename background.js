@@ -10041,6 +10041,73 @@ function resolveAccountRunRecordReasonForStop(status, reason = '') {
   return text;
 }
 
+/**
+ * 判断当前运行态是否属于 SUB2API 原账号重新授权链路。
+ *
+ * @param {object} state 当前后台运行态快照。
+ * @returns {boolean} 当前账号由批量重新授权入口接管时返回 true。
+ */
+function isSub2ApiReauthRecordState(state = {}) {
+  const targetId = String(state?.targetId || '').trim().toLowerCase();
+  return Boolean(state?.sub2apiReauthMode || (state?.selectedAccountId && targetId === 'sub2api'));
+}
+
+/**
+ * 判断账号运行记录状态是否表示失败。
+ *
+ * @param {string} status 即将写入账号运行历史的状态。
+ * @returns {boolean} failed、stepX_failed 或 node:X:failed 时返回 true。
+ */
+function isFailedAccountRunRecordStatus(status = '') {
+  const normalizedStatus = String(status || '').trim().toLowerCase();
+  return normalizedStatus === 'failed'
+    || /_failed$/.test(normalizedStatus)
+    || /^node:[^:]+:failed$/.test(normalizedStatus);
+}
+
+/**
+ * 判断重新授权失败原因是否明确表示 OpenAI 要求手机号验证。
+ *
+ * @param {string} reason 节点失败原因。
+ * @returns {boolean} 命中 add-phone 或手机号验证页时返回 true。
+ */
+function isSub2ApiReauthPhoneVerificationFailureReason(reason = '') {
+  const text = String(reason || '').trim();
+  if (!text) {
+    return false;
+  }
+
+  return /https:\/\/auth\.openai\.com\/(?:add-phone|phone-verification|phone-otp)(?:[/?#]|$)/i.test(text)
+    || /\badd[_\s-]?phone\b|\bphone[\s_-]?verification\b|\bphone\s+number\s+verification\b|\bphone[_\s-]?otp\b/i.test(text)
+    || /要求验证手机号|需要验证手机号|手机号验证页|手机号页面|添加手机号页|出现手机号验证|进入(?:了|到)?手机号验证|进入(?:了|到)?手机号页面/i.test(text);
+}
+
+/**
+ * 判断当前账号运行记录是否允许写入持久化历史。
+ *
+ * SUB2API 重新授权中，只有成功和明确手机号验证失败会写入历史；用户停止、
+ * 未跑到最后一步、超时或其他异常都不写入失败记录，避免误导后续筛选。
+ *
+ * @param {string} status 即将写入的账号运行状态。
+ * @param {object} state 当前后台运行态快照。
+ * @param {string} reason 失败或停止原因。
+ * @returns {boolean} 允许写入账号运行历史时返回 true。
+ */
+function shouldAppendAccountRunRecordForState(status, state = {}, reason = '') {
+  if (!isSub2ApiReauthRecordState(state)) {
+    return true;
+  }
+
+  const normalizedStatus = String(status || '').trim().toLowerCase();
+  if (normalizedStatus === 'success') {
+    return true;
+  }
+  if (isFailedAccountRunRecordStatus(normalizedStatus)) {
+    return isSub2ApiReauthPhoneVerificationFailureReason(reason);
+  }
+  return false;
+}
+
 function getAutoRunStatusPayload(phase, payload = {}) {
   const normalizedPayload = {
     ...payload,
@@ -11995,6 +12062,9 @@ async function appendAndBroadcastAccountRunRecord(status, stateOverride = null, 
   }
 
   const state = stateOverride || await getState();
+  if (!shouldAppendAccountRunRecordForState(status, state, reason)) {
+    return null;
+  }
   const resolvedStatus = resolveAccountRunRecordStatusForStop(status, state);
   const resolvedReason = resolveAccountRunRecordReasonForStop(resolvedStatus, reason);
   const record = await accountRunHistoryHelpers.appendAccountRunRecord(resolvedStatus, state, resolvedReason);

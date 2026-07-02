@@ -103,6 +103,10 @@ test('generic stopped record resolves to next unfinished step during execution g
     extractFunction('extractStoppedNodeFromRecordStatus'),
     extractFunction('extractStoppedStepFromRecordStatus'),
     extractFunction('resolveAccountRunRecordReasonForStop'),
+    extractFunction('isSub2ApiReauthRecordState'),
+    extractFunction('isFailedAccountRunRecordStatus'),
+    extractFunction('isSub2ApiReauthPhoneVerificationFailureReason'),
+    extractFunction('shouldAppendAccountRunRecordForState'),
     extractFunction('appendAndBroadcastAccountRunRecord'),
   ].join('\n');
 
@@ -165,6 +169,76 @@ return {
     state,
     reason: '节点 oauth-login 已被用户停止。',
   });
+});
+
+test('sub2api reauth only persists explicit phone verification failures', async () => {
+  const bundle = [
+    NODE_COMPAT_HELPERS,
+    extractFunction('isStepDoneStatus'),
+    extractFunction('getRunningNodeIds'),
+    extractFunction('inferStoppedRecordNode'),
+    extractFunction('resolveAccountRunRecordStatusForStop'),
+    extractFunction('extractStoppedNodeFromRecordStatus'),
+    extractFunction('extractStoppedStepFromRecordStatus'),
+    extractFunction('resolveAccountRunRecordReasonForStop'),
+    extractFunction('isSub2ApiReauthRecordState'),
+    extractFunction('isFailedAccountRunRecordStatus'),
+    extractFunction('isSub2ApiReauthPhoneVerificationFailureReason'),
+    extractFunction('shouldAppendAccountRunRecordForState'),
+    extractFunction('appendAndBroadcastAccountRunRecord'),
+  ].join('\n');
+
+const api = new Function(`
+const STEP_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const STOP_ERROR_MESSAGE = '流程已被用户停止。';
+const DEFAULT_STATE = {
+  stepStatuses: Object.fromEntries(STEP_IDS.map((step) => [step, 'pending'])),
+};
+const captured = [];
+const accountRunHistoryHelpers = {
+  appendAccountRunRecord: async (status, state, reason) => {
+    captured.push({ status, state, reason });
+    return { status, state, reason };
+  },
+};
+async function broadcastAccountRunHistoryUpdate() {}
+async function getState() {
+  return {};
+}
+${bundle}
+return {
+  appendAndBroadcastAccountRunRecord,
+  getCaptured() {
+    return captured;
+  },
+};
+`)();
+
+  const reauthState = {
+    email: 'reauth@example.com',
+    targetId: 'sub2api',
+    selectedAccountId: 'account-1',
+    sub2apiReauthMode: true,
+    nodeStatuses: {
+      'oauth-login': 'completed',
+      'fetch-login-code': 'running',
+    },
+  };
+
+  await api.appendAndBroadcastAccountRunRecord(
+    'node:fetch-login-code:failed',
+    reauthState,
+    '步骤 8：验证码轮询超时。'
+  );
+  assert.deepStrictEqual(api.getCaptured(), []);
+
+  await api.appendAndBroadcastAccountRunRecord(
+    'node:fetch-login-code:failed',
+    reauthState,
+    '步骤 8：验证码提交后进入手机号验证页，当前账号判定失败。 URL: https://auth.openai.com/phone-verification'
+  );
+  assert.equal(api.getCaptured().length, 1);
+  assert.equal(api.getCaptured()[0].status, 'node:fetch-login-code:failed');
 });
 
 test('requestStop appends a stopped record for the next unfinished step when no step is running', async () => {
