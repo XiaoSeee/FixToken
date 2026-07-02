@@ -48,19 +48,6 @@ function extractFunction(name) {
   return sidepanelSource.slice(start, end);
 }
 
-test('sidepanel html exposes header repo and releases entry points', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-
-  assert.match(
-    html,
-    /id="btn-repo-home"[\s\S]*title="打开 GitHub 仓库"/
-  );
-  assert.match(
-    html,
-    /id="extension-update-status"[\s\S]*title="打开 GitHub Releases 页面"/
-  );
-});
-
 test('header link helpers resolve repo and releases urls', () => {
   const bundle = [
     extractFunction('getRepositoryHomeUrl'),

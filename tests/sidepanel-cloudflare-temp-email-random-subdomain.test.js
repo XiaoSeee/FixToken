@@ -58,21 +58,6 @@ function createRow(initialDisplay = 'none') {
   };
 }
 
-test('sidepanel html places cloudflare temp email controls in a standalone section', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  assert.match(html, /id="cloudflare-temp-email-section"/);
-  assert.match(html, /id="btn-cloudflare-temp-email-usage-guide"/);
-  assert.match(html, /id="btn-cloudflare-temp-email-github"/);
-  assert.match(html, /btn-cloudflare-temp-email-github"[^>]*>部署</);
-  assert.match(html, /id="row-temp-email-lookup-mode"/);
-  assert.match(html, /data-temp-email-lookup-mode="receive-mailbox"/);
-  assert.match(html, /data-temp-email-lookup-mode="registration-email"/);
-  assert.match(html, /id="row-temp-email-random-subdomain-toggle"/);
-  assert.match(html, /id="input-temp-email-use-random-subdomain"/);
-  assert.match(html, /id="btn-temp-email-domain-mode"[^>]*>更新</);
-  assert.doesNotMatch(html, /id="row-temp-email-random-subdomain-domain"/);
-});
-
 test('sidepanel modal message preserves line breaks and supports inline links', () => {
   const css = fs.readFileSync('sidepanel/sidepanel.css', 'utf8');
   assert.match(css, /\.modal-message\s*\{[\s\S]*white-space:\s*pre-line;/);

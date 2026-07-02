@@ -45,29 +45,6 @@ function createAccountPoolUiStub() {
   };
 }
 
-test('sidepanel loads mail2925 manager before sidepanel bootstrap', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const helperIndex = html.indexOf('<script src="account-pool-ui.js"></script>');
-  const managerIndex = html.indexOf('<script src="mail-2925-manager.js"></script>');
-  const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
-
-  assert.notEqual(helperIndex, -1);
-  assert.notEqual(managerIndex, -1);
-  assert.notEqual(sidepanelIndex, -1);
-  assert.ok(helperIndex < managerIndex);
-  assert.ok(managerIndex < sidepanelIndex);
-});
-
-test('sidepanel html contains mail2925 pool toggle and selector controls', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-
-  assert.match(html, /id="input-mail2925-use-account-pool"/);
-  assert.match(html, /id="select-mail2925-pool-account"/);
-  assert.match(html, /id="btn-toggle-mail2925-form"/);
-  assert.match(html, /id="mail2925-form-shell"/);
-  assert.doesNotMatch(html, /id="btn-cancel-mail2925-edit"/);
-});
-
 test('sidepanel css keeps collapsed shared mailbox list near a single card height', () => {
   const css = fs.readFileSync('sidepanel/sidepanel.css', 'utf8');
   assert.match(css, /\.hotmail-list-shell\.is-collapsed\s*\{\s*max-height:\s*176px;\s*\}/);

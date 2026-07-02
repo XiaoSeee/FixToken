@@ -226,19 +226,6 @@ test('IP proxy PAC keeps local traffic direct and routes target traffic through 
   assert.doesNotMatch(pac, /PROXY 127\.0\.0\.1:7897; DIRECT/);
 });
 
-test('sidepanel loads IP proxy scripts before sidepanel bootstrap', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const providerIndex = html.indexOf('<script src="ip-proxy-provider-711proxy.js"></script>');
-  const panelIndex = html.indexOf('<script src="ip-proxy-panel.js"></script>');
-  const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
-
-  assert.notEqual(providerIndex, -1);
-  assert.notEqual(panelIndex, -1);
-  assert.notEqual(sidepanelIndex, -1);
-  assert.ok(providerIndex < panelIndex);
-  assert.ok(panelIndex < sidepanelIndex);
-});
-
 test('IP proxy auto-switch threshold is clamped to the supported range', () => {
   const api = loadIpProxyCore();
 

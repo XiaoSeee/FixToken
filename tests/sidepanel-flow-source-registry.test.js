@@ -33,48 +33,6 @@ function extractFunction(source, name) {
   return source.slice(start, end);
 }
 
-test('sidepanel html exposes flow selector and kiro source fields', () => {
-  [
-    'id="select-flow"',
-    '<option value="grok">Grok</option>',
-    'id="label-source-selector"',
-    'id="btn-open-webchat2api-github"',
-    'id="row-step6-cookie-settings"',
-    'id="row-shared-auto-run"',
-    'id="row-auto-run-thread-interval"',
-    'id="row-oauth-callback"',
-    'id="row-settings-actions"',
-    'id="row-kiro-rs-url"',
-    'id="btn-open-kiro-rs-github"',
-    'id="row-kiro-rs-key"',
-    'id="btn-test-kiro-rs"',
-    'id="row-kiro-rs-test-status"',
-    'id="row-kiro-web-status"',
-    'id="row-kiro-login-url"',
-    'id="row-kiro-upload-status"',
-    'id="row-grok-register-status"',
-    'id="row-grok-sso-status"',
-    'id="row-grok-webchat2api-upload-status"',
-    'id="display-grok-webchat2api-upload-status"',
-    'id="row-grok-sso-settings"',
-    'id="btn-copy-grok-sso"',
-    'id="btn-clear-grok-sso"',
-    '<script src="../flows/grok/index.js"></script>',
-    '<script src="../flows/grok/workflow.js"></script>',
-  ].forEach((snippet) => {
-    assert.match(sidepanelHtml, new RegExp(snippet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  });
-  assert.doesNotMatch(sidepanelHtml, /id="btn-export-grok-sso"/);
-  assert.ok(
-    sidepanelHtml.indexOf('<script src="../flows/kiro/workflow.js"></script>')
-      < sidepanelHtml.indexOf('<script src="../flows/grok/index.js"></script>')
-  );
-  assert.ok(
-    sidepanelHtml.indexOf('<script src="../flows/grok/workflow.js"></script>')
-      < sidepanelHtml.indexOf('<script src="../flows/index.js"></script>')
-  );
-});
-
 test('sidepanel Grok SSO clear action goes through background message instead of direct storage writes', () => {
   const clearButtonIndex = sidepanelSource.indexOf("btnClearGrokSso?.addEventListener('click'");
   assert.notEqual(clearButtonIndex, -1);

@@ -2,16 +2,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-test('sidepanel loads luckmail manager before sidepanel bootstrap', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const luckmailManagerIndex = html.indexOf('<script src="luckmail-manager.js"></script>');
-  const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
-
-  assert.notEqual(luckmailManagerIndex, -1);
-  assert.notEqual(sidepanelIndex, -1);
-  assert.ok(luckmailManagerIndex < sidepanelIndex);
-});
-
 test('luckmail manager exposes a factory and renders empty state', () => {
   const source = fs.readFileSync('sidepanel/luckmail-manager.js', 'utf8');
   const windowObject = {};

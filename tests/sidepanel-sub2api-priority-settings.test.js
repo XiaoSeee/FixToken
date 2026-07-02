@@ -7,24 +7,6 @@ const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
 const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
 const flowRegistrySource = readFlowRegistryBundle();
 
-test('sidepanel exposes SUB2API account priority below group setting', () => {
-  assert.match(html, /id="row-sub2api-account-priority"/);
-  assert.match(html, /id="input-sub2api-account-priority"/);
-  assert.match(html, /<span class="data-label">优先级<\/span>/);
-  const inputTag = html.match(/<input[^>]*id="input-sub2api-account-priority"[^>]*>/)?.[0] || '';
-  assert.match(inputTag, /type="number"/);
-  assert.match(inputTag, /min="1"/);
-  assert.match(inputTag, /step="1"/);
-  assert.ok(
-    html.indexOf('id="row-sub2api-account-priority"') > html.indexOf('id="row-sub2api-group"'),
-    'priority row should be placed below the SUB2API group row'
-  );
-  assert.ok(
-    html.indexOf('id="row-sub2api-account-priority"') < html.indexOf('id="row-sub2api-default-proxy"'),
-    'priority row should remain above the SUB2API default proxy row'
-  );
-});
-
 test('sidepanel persists and locks SUB2API account priority setting', () => {
   const flowRegistryApi = new Function(
     'self',

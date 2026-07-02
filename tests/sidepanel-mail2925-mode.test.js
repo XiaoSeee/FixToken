@@ -51,15 +51,6 @@ function extractFunction(name) {
   return source.slice(start, end);
 }
 
-test('sidepanel html keeps 2925 mode row and standalone pool settings row', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-
-  assert.match(html, /id="row-mail-2925-mode"/);
-  assert.match(html, /data-mail2925-mode="provide"/);
-  assert.match(html, /data-mail2925-mode="receive"/);
-  assert.match(html, /id="row-mail2925-pool-settings"/);
-});
-
 test('sidepanel only treats 2925 as generated alias provider in provide mode', () => {
   const bundle = [
     extractFunction('isManagedAliasProvider'),

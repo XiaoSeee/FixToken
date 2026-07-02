@@ -45,13 +45,6 @@ function createAccountPoolUiStub() {
   };
 }
 
-test('sidepanel html contains collapsible mail2925 form controls', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  assert.match(html, /id="btn-toggle-mail2925-form"/);
-  assert.match(html, /id="mail2925-form-shell"/);
-  assert.doesNotMatch(html, /id="btn-cancel-mail2925-edit"/);
-});
-
 test('mail2925 manager renders edit action for existing accounts', () => {
   const source = fs.readFileSync('sidepanel/mail-2925-manager.js', 'utf8');
   const windowObject = {

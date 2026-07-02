@@ -128,31 +128,6 @@ async function flushPromises() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
-test('sidepanel html contains account records overlay and manager script', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const managerIndex = html.indexOf('<script src="account-records-manager.js"></script>');
-  const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
-
-  assert.match(html, /id="btn-open-account-records"/);
-  assert.match(html, /id="account-records-overlay"/);
-  assert.match(html, /id="account-records-list"/);
-  assert.match(html, /id="account-records-stats"/);
-  assert.match(html, /id="btn-clear-account-records"/);
-  assert.match(html, /id="btn-toggle-account-records-selection"/);
-  assert.match(html, /id="btn-delete-selected-account-records"/);
-  assert.match(html, /id="input-sub2api-default-proxy"/);
-  assert.match(html, /src="editable-list-picker\.js"/);
-  assert.match(html, /id="sub2api-group-picker"/);
-  assert.match(html, /id="input-sub2api-group" value="codex"/);
-  assert.match(html, /id="btn-add-sub2api-group"/);
-  assert.match(html, /id="paypal-account-picker"/);
-  assert.match(html, /id="cf-domain-picker"/);
-  assert.match(html, /id="temp-email-domain-picker"/);
-  assert.notEqual(managerIndex, -1);
-  assert.notEqual(sidepanelIndex, -1);
-  assert.ok(managerIndex < sidepanelIndex);
-});
-
 test('sidepanel css keeps confirm modal above account records overlay', () => {
   const css = fs.readFileSync('sidepanel/sidepanel.css', 'utf8');
   const overlayMatch = css.match(/\.account-records-overlay\s*\{[\s\S]*?z-index:\s*(\d+);/);

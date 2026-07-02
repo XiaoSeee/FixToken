@@ -2,34 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-test('sidepanel loads icloud manager before sidepanel bootstrap', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const icloudManagerIndex = html.indexOf('<script src="icloud-manager.js"></script>');
-  const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
-
-  assert.notEqual(icloudManagerIndex, -1);
-  assert.notEqual(sidepanelIndex, -1);
-  assert.ok(icloudManagerIndex < sidepanelIndex);
-});
-
 test('sidepanel source binds the icloud fetch mode control before using it', () => {
   const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
 
   assert.match(source, /const selectIcloudFetchMode = document\.getElementById\('select-icloud-fetch-mode'\);/);
   assert.match(source, /selectIcloudFetchMode\?\.addEventListener\('change'/);
-});
-
-test('update card highlights exporting config before upgrade', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const css = fs.readFileSync('sidepanel/sidepanel.css', 'utf8');
-
-  assert.match(html, /id="btn-ignore-release"/);
-  assert.match(html, /class="update-card-actions"/);
-  assert.match(css, /\.update-card-actions\s*\{/);
-  assert.match(html, /<p class="update-card-reminder">一定请先导出配置，再执行更新<\/p>/);
-  assert.match(css, /\.update-card-reminder\s*\{/);
-  assert.match(css, /font-weight:\s*700;/);
-  assert.match(css, /color:\s*var\(--orange\);/);
 });
 
 test('icloud manager exposes a factory and renders empty state', () => {

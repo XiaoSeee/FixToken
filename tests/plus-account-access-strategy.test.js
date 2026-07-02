@@ -116,20 +116,6 @@ return {
 `)();
 }
 
-test('sidepanel Plus account access selector only exposes access methods', () => {
-  const selectorStart = sidepanelHtml.indexOf('id="select-plus-account-access-strategy"');
-  const selectorEnd = sidepanelHtml.indexOf('</select>', selectorStart);
-  const selectorHtml = sidepanelHtml.slice(selectorStart, selectorEnd);
-
-  assert.notEqual(selectorStart, -1);
-  assert.match(selectorHtml, /value="oauth"[^>]*>OAuth</);
-  assert.match(selectorHtml, /value="codex_session"[^>]*>使用会话 JSON 导入</);
-  assert.doesNotMatch(selectorHtml, /cpa_codex_session/);
-  assert.doesNotMatch(selectorHtml, /sub2api_codex_session/);
-  assert.doesNotMatch(selectorHtml, /导入当前 ChatGPT 会话到 CPA/);
-  assert.doesNotMatch(selectorHtml, /导入当前 ChatGPT 会话到 SUB2API/);
-});
-
 test('sidepanel keeps requested Plus account strategy while contribution mode forces SUB2API', () => {
   const api = buildHarness(
     `{

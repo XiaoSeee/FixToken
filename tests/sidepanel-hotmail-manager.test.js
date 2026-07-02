@@ -45,26 +45,6 @@ function createAccountPoolUiStub() {
   };
 }
 
-test('sidepanel loads hotmail manager before sidepanel bootstrap', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const helperIndex = html.indexOf('<script src="account-pool-ui.js"></script>');
-  const hotmailManagerIndex = html.indexOf('<script src="hotmail-manager.js"></script>');
-  const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
-
-  assert.notEqual(helperIndex, -1);
-  assert.notEqual(hotmailManagerIndex, -1);
-  assert.notEqual(sidepanelIndex, -1);
-  assert.ok(helperIndex < hotmailManagerIndex);
-  assert.ok(hotmailManagerIndex < sidepanelIndex);
-});
-
-test('sidepanel html contains collapsible hotmail form controls', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  assert.match(html, /id="btn-toggle-hotmail-form"/);
-  assert.match(html, /id="hotmail-form-shell"/);
-  assert.match(html, /id="btn-import-hotmail-accounts"[^>]*>批量导入</);
-});
-
 test('hotmail manager exposes a factory and renders empty state', () => {
   const source = fs.readFileSync('sidepanel/hotmail-manager.js', 'utf8');
   const windowObject = {

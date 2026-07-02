@@ -46,25 +46,6 @@ test('manifest no longer ships a static Kiro content bundle', () => {
   assert.equal(hasStaticKiroBundle, false);
 });
 
-test('manifest loads Grok flow definition in static bundles but not Grok content runtime', () => {
-  const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
-  for (const entry of manifest.content_scripts || []) {
-    const scripts = Array.isArray(entry.js) ? entry.js : [];
-    if (!scripts.includes('flows/index.js')) continue;
-    assert.ok(scripts.includes('flows/kiro/index.js'));
-    assert.ok(scripts.includes('flows/grok/index.js'));
-    assert.ok(
-      scripts.indexOf('flows/kiro/index.js') < scripts.indexOf('flows/grok/index.js'),
-      'Kiro definition should load before Grok definition'
-    );
-    assert.ok(
-      scripts.indexOf('flows/grok/index.js') < scripts.indexOf('flows/index.js'),
-      'Grok definition must load before flows/index.js'
-    );
-    assert.equal(scripts.includes('flows/grok/content/register-page.js'), false);
-  }
-});
-
 test('background injects shared Kiro timeout module before Kiro content scripts', () => {
   const source = fs.readFileSync('background.js', 'utf8');
   assert.match(

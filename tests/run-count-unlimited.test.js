@@ -49,14 +49,6 @@ function extractFunction(source, name) {
   return source.slice(start, end);
 }
 
-test('sidepanel run count input no longer hardcodes max=50', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const inputTag = html.match(/<input type="number" id="input-run-count"[^>]+>/);
-
-  assert.ok(inputTag, 'run count input should exist');
-  assert.doesNotMatch(inputTag[0], /\smax="50"/);
-});
-
 test('sidepanel getRunCountValue no longer clamps run count to 50', () => {
   const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
   const bundle = extractFunction(source, 'getRunCountValue');

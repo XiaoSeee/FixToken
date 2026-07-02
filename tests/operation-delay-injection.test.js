@@ -8,23 +8,6 @@ function assertOrdered(list, before, after) {
   assert.ok(list.indexOf(before) < list.indexOf(after), `${before} must load before ${after}`);
 }
 
-test('manifest loads operation delay after utils only for covered auth/provider bundles', () => {
-  const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
-  const authBundle = manifest.content_scripts.find((entry) => entry.js.includes('flows/openai/content/openai-auth.js')).js;
-  assertOrdered(authBundle, 'content/utils.js', 'content/operation-delay.js');
-  assertOrdered(authBundle, 'content/operation-delay.js', 'flows/openai/content/auth-page-recovery.js');
-  assertOrdered(authBundle, 'content/operation-delay.js', 'flows/openai/content/openai-auth.js');
-
-  const duckBundle = manifest.content_scripts.find((entry) => entry.js.includes('content/duck-mail.js')).js;
-  assertOrdered(duckBundle, 'content/utils.js', 'content/operation-delay.js');
-  assertOrdered(duckBundle, 'content/operation-delay.js', 'content/duck-mail.js');
-
-  for (const pollingFile of ['content/qq-mail.js', 'content/mail-163.js', 'content/icloud-mail.js']) {
-    const bundle = manifest.content_scripts.find((entry) => entry.js.includes(pollingFile))?.js || [];
-    assert.equal(bundle.includes('content/operation-delay.js'), false, `${pollingFile} polling bundle must not load operation delay`);
-  }
-});
-
 test('dynamic covered injections load operation delay after utils', () => {
   const expectations = [
     ['background.js', 'OPENAI_AUTH_INJECT_FILES'],

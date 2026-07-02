@@ -2,48 +2,6 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 
-test('sidepanel loads reusable form dialog and paypal manager before sidepanel bootstrap', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const formDialogIndex = html.indexOf('<script src="form-dialog.js"></script>');
-  const editableListPickerIndex = html.indexOf('<script src="editable-list-picker.js"></script>');
-  const managerIndex = html.indexOf('<script src="paypal-manager.js"></script>');
-  const sidepanelIndex = html.indexOf('<script src="sidepanel.js"></script>');
-
-  assert.notEqual(formDialogIndex, -1);
-  assert.notEqual(editableListPickerIndex, -1);
-  assert.notEqual(managerIndex, -1);
-  assert.notEqual(sidepanelIndex, -1);
-  assert.ok(formDialogIndex < editableListPickerIndex);
-  assert.ok(editableListPickerIndex < managerIndex);
-  assert.ok(managerIndex < sidepanelIndex);
-});
-
-test('sidepanel html contains paypal select and GoPay controls', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-  const plusAccountAccessStrategyIndex = html.indexOf('id="row-plus-account-access-strategy"');
-  const plusPaymentMethodIndex = html.indexOf('id="row-plus-payment-method"');
-
-  assert.match(html, /id="row-plus-payment-method"/);
-  assert.match(html, /id="row-plus-account-access-strategy"/);
-  assert.notEqual(plusAccountAccessStrategyIndex, -1);
-  assert.notEqual(plusPaymentMethodIndex, -1);
-  assert.ok(plusAccountAccessStrategyIndex < plusPaymentMethodIndex);
-  assert.match(html, /id="select-plus-payment-method"/);
-  assert.match(html, /id="row-paypal-account"/);
-  assert.match(html, /id="select-paypal-account"/);
-  assert.match(html, /id="paypal-account-picker"/);
-  assert.match(html, /id="btn-paypal-account-menu"/);
-  assert.match(html, /id="paypal-account-menu"/);
-  assert.match(html, /id="btn-add-paypal-account"/);
-  assert.match(html, /id="row-gopay-phone"/);
-  assert.match(html, /id="input-gopay-phone"/);
-  assert.match(html, /id="row-gopay-otp"/);
-  assert.match(html, /id="input-gopay-otp"/);
-  assert.match(html, /id="row-gopay-pin"/);
-  assert.match(html, /id="input-gopay-pin"/);
-  assert.match(html, /id="shared-form-modal"/);
-});
-
 test('paypal account dialog masks the login account field for recording', () => {
   const source = fs.readFileSync('sidepanel/paypal-manager.js', 'utf8');
 

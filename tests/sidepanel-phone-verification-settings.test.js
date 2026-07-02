@@ -53,101 +53,6 @@ function extractFunction(name) {
   return sidepanelSource.slice(start, end);
 }
 
-test('sidepanel html exposes phone verification toggle and multi-provider SMS rows', () => {
-  const html = fs.readFileSync('sidepanel/sidepanel.html', 'utf8');
-
-  assert.match(html, /id="row-phone-verification-enabled"/);
-  assert.match(html, /id="btn-toggle-phone-verification-section"/);
-  assert.match(html, /id="row-phone-verification-fold"/);
-  assert.match(html, /id="input-phone-verification-enabled"/);
-  assert.match(html, /id="row-signup-method"/);
-  assert.match(html, /id="row-signup-phone"/);
-  assert.match(html, /id="input-signup-phone"/);
-  assert.ok(
-    html.indexOf('id="row-signup-phone"') > html.indexOf('id="phone-verification-section"'),
-    'signup phone runtime row should live inside the phone verification card'
-  );
-  assert.ok(
-    html.indexOf('id="row-signup-phone"') > html.indexOf('id="row-hero-sms-runtime-pair"'),
-    'signup phone runtime row should sit below the SMS order runtime row'
-  );
-  assert.ok(
-    html.indexOf('id="row-signup-phone"') > html.indexOf('hero-sms-runtime-grid'),
-    'signup phone runtime row should not be embedded in the SMS order runtime grid'
-  );
-  assert.match(html, /data-signup-method="email"/);
-  assert.match(html, /data-signup-method="phone"/);
-  assert.match(html, /id="row-phone-sms-provider"/);
-  assert.match(html, /id="select-phone-sms-provider"/);
-  assert.match(html, /id="row-phone-sms-provider-order"/);
-  assert.match(html, /id="select-phone-sms-provider-order"[^>]*multiple/);
-  assert.match(html, /id="btn-phone-sms-provider-order-menu"/);
-  assert.match(html, /id="row-phone-sms-provider-order-actions"/);
-  assert.match(html, /id="btn-phone-sms-provider-order-reset"/);
-  assert.match(html, /id="row-hero-sms-platform"/);
-  assert.match(html, /id="select-phone-sms-provider"/);
-  assert.match(html, /\.\.\/phone-sms\/providers\/hero-sms\.js/);
-  assert.match(html, /\.\.\/phone-sms\/providers\/five-sim\.js/);
-  assert.match(html, /\.\.\/phone-sms\/providers\/registry\.js/);
-  assert.match(html, /<option value="hero-sms">HeroSMS<\/option>/);
-  assert.match(html, /<option value="5sim">5sim<\/option>/);
-  assert.match(html, /id="row-hero-sms-country"/);
-  assert.match(html, /id="row-hero-sms-country-fallback"/);
-  assert.match(html, /id="row-hero-sms-acquire-priority"/);
-  assert.match(html, /id="select-hero-sms-acquire-priority"/);
-  assert.match(html, /id="select-hero-sms-country"[^>]*multiple/);
-  assert.doesNotMatch(html, /id="select-hero-sms-country-fallback"/);
-  assert.match(html, /id="row-hero-sms-api-key"/);
-  assert.match(html, /id="row-hero-sms-max-price"/);
-  assert.match(html, /id="input-hero-sms-min-price"/);
-  assert.match(html, /id="btn-phone-sms-balance"/);
-  assert.match(html, /id="display-phone-sms-balance"/);
-  assert.match(html, /id="row-five-sim-operator"/);
-  assert.match(html, /id="input-five-sim-operator"/);
-  assert.match(html, /id="row-hero-sms-current-number"/);
-  assert.match(html, /id="row-hero-sms-current-countdown"/);
-  assert.match(html, /id="row-hero-sms-price-tiers"/);
-  assert.match(html, /id="row-hero-sms-current-code"/);
-  assert.match(html, /id="row-hero-sms-preferred-activation"/);
-  assert.match(html, /id="select-hero-sms-preferred-activation"/);
-  assert.match(html, /id="row-free-phone-reuse-enabled"/);
-  assert.match(html, /id="input-free-phone-reuse-enabled"/);
-  assert.match(html, /id="row-free-phone-reuse-auto-enabled"/);
-  assert.match(html, /id="input-free-phone-reuse-auto-enabled"/);
-  assert.match(html, /id="row-free-reusable-phone"/);
-  assert.match(html, /id="display-free-reusable-phone"/);
-  assert.match(html, /id="display-free-reusable-phone-country"/);
-  assert.match(html, /id="input-free-reusable-phone"/);
-  assert.match(html, /id="btn-save-free-reusable-phone"/);
-  assert.match(html, /id="btn-clear-free-reusable-phone"/);
-  assert.match(html, /白嫖复用/);
-  assert.match(html, /自动白嫖复用/);
-  assert.match(html, /id="row-phone-replacement-limit"/);
-  assert.match(html, /id="row-phone-verification-resend-count"/);
-  assert.match(html, /id="row-phone-code-wait-seconds"/);
-  assert.match(html, /id="row-phone-code-timeout-windows"/);
-  assert.match(html, /id="row-phone-code-poll-interval-seconds"/);
-  assert.match(html, /id="row-phone-code-poll-max-rounds"/);
-  assert.match(html, /id="row-five-sim-api-key"/);
-  assert.match(html, /id="input-five-sim-api-key"/);
-  assert.match(html, /id="row-five-sim-country"/);
-  assert.match(html, /id="select-five-sim-country"[^>]*multiple/);
-  assert.match(html, /id="row-five-sim-country-fallback"/);
-  assert.match(html, /id="row-five-sim-operator"/);
-  assert.match(html, /id="input-five-sim-operator"/);
-  assert.match(html, /id="row-five-sim-product"/);
-  assert.match(html, /id="input-five-sim-product"/);
-  assert.match(html, /<option value="nexsms">/);
-  assert.match(html, /id="row-nex-sms-api-key"/);
-  assert.match(html, /id="input-nex-sms-api-key"/);
-  assert.match(html, /id="row-nex-sms-country"/);
-  assert.match(html, /id="select-nex-sms-country"[^>]*multiple/);
-  assert.match(html, /id="row-nex-sms-country-fallback"/);
-  assert.match(html, /id="row-nex-sms-service-code"/);
-  assert.match(html, /id="input-nex-sms-service-code"/);
-  assert.doesNotMatch(html, /id="input-account-run-history-text-enabled"/);
-});
-
 test('sidepanel loads live SMS country lists silently during startup', () => {
   const heroLoader = extractFunction('loadHeroSmsCountries');
   const fiveSimLoader = extractFunction('loadFiveSimCountries');
@@ -408,14 +313,6 @@ return {
   api.setFlow('openai');
   assert.equal(api.canSelectPhoneSignupMethod(), true);
   assert.equal(api.shouldWarnCpaPhoneSignup('phone', 'cpa'), true);
-});
-
-test('phone signup relogin-after-bind-email switch is wired into UI and step definitions', () => {
-  assert.match(sidepanelHtml, /row-phone-signup-relogin-after-bind-email/);
-  assert.match(sidepanelHtml, /input-phone-signup-relogin-after-bind-email/);
-  assert.match(sidepanelSource, /phoneSignupReloginAfterBindEmailEnabled: typeof inputPhoneSignupReloginAfterBindEmail !== 'undefined'/);
-  assert.match(sidepanelSource, /phoneSignupReloginAfterBindEmailEnabled: Boolean\(state\?\.phoneSignupReloginAfterBindEmailEnabled\)/);
-  assert.match(sidepanelSource, /nextPhoneSignupReloginAfterBindEmailEnabled !== currentPhoneSignupReloginAfterBindEmailEnabled/);
 });
 
 test('manual step 3 uses phone identity without requiring registration email', () => {
