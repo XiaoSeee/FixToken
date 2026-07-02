@@ -20,101 +20,111 @@
       </button>
     </header>
 
-    <section class="section-panel">
+    <section class="section-panel collapsible" id="card-sub2api">
       <div class="section-title-row">
-        <div>
-          <h2>SUB2API</h2>
-          <p>用于登录后台、查询错误账号，并把新 OAuth 凭据写回原账号。</p>
-        </div>
+        <button class="collapse-toggle" type="button" aria-expanded="true" aria-controls="card-sub2api-body" data-collapse-target="card-sub2api">
+          <span class="collapse-chevron" aria-hidden="true">▾</span>
+          <span class="collapse-title">
+            <h2>SUB2API</h2>
+            <p>用于登录后台、查询错误账号，并把新 OAuth 凭据写回原账号。</p>
+          </span>
+        </button>
         <span id="save-status" class="status-pill">未保存</span>
       </div>
 
-      <label class="field">
-        <span>后台地址</span>
-        <input id="input-sub2api-url" type="url" autocomplete="off" placeholder="https://your-sub2api-domain">
-      </label>
+      <div class="section-body" id="card-sub2api-body">
+        <label class="field">
+          <span>后台地址</span>
+          <input id="input-sub2api-url" type="url" autocomplete="off" placeholder="https://your-sub2api-domain">
+        </label>
 
-      <div class="field-grid">
-        <label class="field">
-          <span>账号邮箱</span>
-          <input id="input-sub2api-email" type="email" autocomplete="username" placeholder="admin@example.com">
-        </label>
-        <label class="field">
-          <span>账号密码</span>
-          <input id="input-sub2api-password" type="password" autocomplete="current-password" placeholder="SUB2API 登录密码">
-        </label>
-      </div>
+        <div class="field-grid">
+          <label class="field">
+            <span>账号邮箱</span>
+            <input id="input-sub2api-email" type="email" autocomplete="username" placeholder="admin@example.com">
+          </label>
+          <label class="field">
+            <span>账号密码</span>
+            <input id="input-sub2api-password" type="password" autocomplete="current-password" placeholder="SUB2API 登录密码">
+          </label>
+        </div>
 
-      <label class="field">
-        <span>OpenAI 登录密码</span>
-        <input id="input-openai-password" type="password" autocomplete="off" placeholder="用于登录待重新授权的 OpenAI 账号">
-      </label>
+        <label class="field">
+          <span>OpenAI 登录密码</span>
+          <input id="input-openai-password" type="password" autocomplete="off" placeholder="用于登录待重新授权的 OpenAI 账号">
+        </label>
 
-      <div class="field-grid">
-        <label class="field">
-          <span>OpenAI 分组</span>
-          <input id="input-sub2api-group" type="text" autocomplete="off" placeholder="codex">
-        </label>
-        <label class="field">
-          <span>默认代理</span>
-          <input id="input-sub2api-proxy" type="text" autocomplete="off" placeholder="留空不使用代理，或填写名称 / ID">
-        </label>
+        <div class="field-grid">
+          <label class="field">
+            <span>OpenAI 分组</span>
+            <input id="input-sub2api-group" type="text" autocomplete="off" placeholder="codex">
+          </label>
+          <label class="field">
+            <span>默认代理</span>
+            <input id="input-sub2api-proxy" type="text" autocomplete="off" placeholder="留空不使用代理，或填写名称 / ID">
+          </label>
+        </div>
       </div>
     </section>
 
-    <section class="section-panel">
+    <section class="section-panel collapsible" id="card-temp-email">
       <div class="section-title-row">
-        <div>
-          <h2>Cloudflare Temp Email</h2>
-          <p>OAuth 登录验证码会继续复用原插件的 Cloudflare Temp Email 轮询能力。</p>
+        <button class="collapse-toggle" type="button" aria-expanded="true" aria-controls="card-temp-email-body" data-collapse-target="card-temp-email">
+          <span class="collapse-chevron" aria-hidden="true">▾</span>
+          <span class="collapse-title">
+            <h2>Cloudflare Temp Email</h2>
+            <p>OAuth 登录验证码会继续复用原插件的 Cloudflare Temp Email 轮询能力。</p>
+          </span>
+        </button>
+      </div>
+
+      <div class="section-body" id="card-temp-email-body">
+        <label class="field">
+          <span>服务地址</span>
+          <input id="input-temp-base-url" type="url" autocomplete="off" placeholder="https://temp-email.example.com">
+        </label>
+
+        <div class="field-grid">
+          <label class="field">
+            <span>Admin Auth</span>
+            <input id="input-temp-admin-auth" type="password" autocomplete="off" placeholder="可留空">
+          </label>
+          <label class="field">
+            <span>Custom Auth</span>
+            <input id="input-temp-custom-auth" type="password" autocomplete="off" placeholder="可留空">
+          </label>
         </div>
-      </div>
 
-      <label class="field">
-        <span>服务地址</span>
-        <input id="input-temp-base-url" type="url" autocomplete="off" placeholder="https://temp-email.example.com">
-      </label>
+        <div class="field-grid">
+          <label class="field">
+            <span>查询模式</span>
+            <select id="select-temp-lookup-mode">
+              <option value="receive-mailbox">按接收邮箱查询</option>
+              <option value="registration-email">按注册邮箱查询</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>接收邮箱</span>
+            <input id="input-temp-receive-mailbox" type="email" autocomplete="off" placeholder="forward@example.com">
+          </label>
+        </div>
 
-      <div class="field-grid">
-        <label class="field">
-          <span>Admin Auth</span>
-          <input id="input-temp-admin-auth" type="password" autocomplete="off" placeholder="可留空">
-        </label>
-        <label class="field">
-          <span>Custom Auth</span>
-          <input id="input-temp-custom-auth" type="password" autocomplete="off" placeholder="可留空">
-        </label>
-      </div>
+        <div class="field-grid">
+          <label class="field">
+            <span>当前域名</span>
+            <input id="input-temp-domain" type="text" autocomplete="off" placeholder="mail.example.com">
+          </label>
+          <label class="field">
+            <span>域名列表</span>
+            <input id="input-temp-domains" type="text" autocomplete="off" placeholder="mail.example.com, alt.example.com">
+          </label>
+        </div>
 
-      <div class="field-grid">
-        <label class="field">
-          <span>查询模式</span>
-          <select id="select-temp-lookup-mode">
-            <option value="receive-mailbox">按接收邮箱查询</option>
-            <option value="registration-email">按注册邮箱查询</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>接收邮箱</span>
-          <input id="input-temp-receive-mailbox" type="email" autocomplete="off" placeholder="forward@example.com">
-        </label>
-      </div>
-
-      <div class="field-grid">
-        <label class="field">
-          <span>当前域名</span>
-          <input id="input-temp-domain" type="text" autocomplete="off" placeholder="mail.example.com">
-        </label>
-        <label class="field">
-          <span>域名列表</span>
-          <input id="input-temp-domains" type="text" autocomplete="off" placeholder="mail.example.com, alt.example.com">
+        <label class="check-row">
+          <input id="input-temp-random-subdomain" type="checkbox">
+          <span>注册邮箱使用随机子域名</span>
         </label>
       </div>
-
-      <label class="check-row">
-        <input id="input-temp-random-subdomain" type="checkbox">
-        <span>注册邮箱使用随机子域名</span>
-      </label>
     </section>
 
     <section class="section-panel reauth-panel">

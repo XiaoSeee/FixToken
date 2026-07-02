@@ -93,6 +93,57 @@ h2 {
   font-size: 12px;
 }
 
+/* 可折叠卡片：标题区整体作为切换按钮，点击展开 / 收起下方表单体 */
+.collapse-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.collapse-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.collapse-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.collapse-chevron {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  transition: transform 180ms ease;
+}
+
+/* 收起态：表单体隐藏，箭头旋转 90° 指向右侧 */
+.collapsible.collapsed .section-body {
+  display: none;
+}
+
+.collapsible.collapsed .collapse-chevron {
+  transform: rotate(-90deg);
+}
+
+.section-body {
+  display: grid;
+  gap: 12px;
+}
+
 .field-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

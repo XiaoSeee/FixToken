@@ -520,7 +520,76 @@ function bindEvents() {
   });
 }
 
+/**
+ * 折叠状态在 chrome.storage.local 中的持久化键。
+ */
+const COLLAPSE_STORAGE_KEY = 'sidepanelCollapseState';
+
+/**
+ * 读取已持久化的折叠状态。
+ *
+ * @returns {Promise<Record<string, boolean>>} 卡片 ID 到是否收起的映射。
+ */
+async function loadCollapseState() {
+  try {
+    const stored = await chrome.storage.local.get(COLLAPSE_STORAGE_KEY);
+    return stored?.[COLLAPSE_STORAGE_KEY] || {};
+  } catch (error) {
+    return {};
+  }
+}
+
+/**
+ * 持久化当前折叠状态。
+ *
+ * @param {Record<string, boolean>} state 卡片 ID 到是否收起的映射。
+ */
+function saveCollapseState(state) {
+  try {
+    chrome.storage.local.set({ [COLLAPSE_STORAGE_KEY]: state });
+  } catch (error) {
+    /* 持久化失败不影响使用，忽略 */
+  }
+}
+
+/**
+ * 设置某个可折叠卡片的展开 / 收起状态，并同步无障碍属性。
+ *
+ * @param {HTMLElement} section 卡片根节点。
+ * @param {boolean} collapsed 是否收起。
+ */
+function applyCollapseState(section, collapsed) {
+  section.classList.toggle('collapsed', collapsed);
+  const toggle = section.querySelector('.collapse-toggle');
+  if (toggle) {
+    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+}
+
+/**
+ * 初始化可折叠卡片：回填持久化状态并绑定点击切换。
+ */
+async function initCollapsibleCards() {
+  const toggles = Array.from(document.querySelectorAll('.collapse-toggle'));
+  const stored = await loadCollapseState();
+  toggles.forEach((toggle) => {
+    const sectionId = toggle.dataset.collapseTarget;
+    const section = document.getElementById(sectionId);
+    if (!section) {
+      return;
+    }
+    applyCollapseState(section, Boolean(stored[sectionId]));
+    toggle.addEventListener('click', () => {
+      const collapsed = !section.classList.contains('collapsed');
+      applyCollapseState(section, collapsed);
+      stored[sectionId] = collapsed;
+      saveCollapseState(stored);
+    });
+  });
+}
+
 bindEvents();
+initCollapsibleCards();
 refreshState().catch((error) => {
   setSaveStatus('同步失败', 'warn');
   renderTransientLog(`初始化失败：${error.message}`, 'error');
