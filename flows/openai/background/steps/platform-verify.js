@@ -408,7 +408,8 @@
             });
             
             const credentials = exchangeResult?.credentials || {};
-            await api.applyOAuthCredentials(state.selectedAccountId, state, credentials, {
+            const extra = exchangeResult?.extra;
+            await api.applyOAuthCredentials(state.selectedAccountId, state, credentials, extra, {
               logLabel: `步骤 ${visibleStep}（重新授权）`,
               timeoutMs: SUB2API_STEP9_RESPONSE_TIMEOUT_MS,
             });

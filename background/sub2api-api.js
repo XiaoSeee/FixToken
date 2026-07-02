@@ -527,7 +527,9 @@
         'chatgpt_user_id',
         'organization_id',
         'plan_type',
+        'subscription_expires_at',
         'client_id',
+        'chatgpt_account_is_fedramp',
       ];
 
       for (const key of allowedKeys) {
@@ -854,27 +856,42 @@
       return items;
     }
 
-    async function applyOAuthCredentials(accountId, state = {}, credentials = {}, options = {}) {
-      const logLabel = normalizeString(options.logLabel) || '更新 OAuth 凭据';
+    async function applyOAuthCredentials(accountId, state = {}, credentials = {}, extraOrOptions = undefined, options = undefined) {
+      const extraLooksLikeOptions = extraOrOptions
+        && typeof extraOrOptions === 'object'
+        && !Array.isArray(extraOrOptions)
+        && (
+          Object.prototype.hasOwnProperty.call(extraOrOptions, 'logLabel')
+          || Object.prototype.hasOwnProperty.call(extraOrOptions, 'timeoutMs')
+          || Object.prototype.hasOwnProperty.call(extraOrOptions, 'logOptions')
+        );
+      const requestOptions = !options && extraLooksLikeOptions ? extraOrOptions : (options || {});
+      const extra = !options && extraLooksLikeOptions ? undefined : extraOrOptions;
+      const logLabel = normalizeString(requestOptions.logLabel) || '更新 OAuth 凭据';
 
       if (!accountId) {
         throw new Error('缺少账号 ID，无法更新 OAuth 凭据。');
       }
 
-      await logWithOptions(`${logLabel}：正在登录 SUB2API 并更新账号 #${accountId} 的 OAuth 凭据...`, 'info', options);
-      const { origin, token } = await loginSub2Api(state, options);
+      await logWithOptions(`${logLabel}：正在登录 SUB2API 并更新账号 #${accountId} 的 OAuth 凭据...`, 'info', requestOptions);
+      const { origin, token } = await loginSub2Api(state, requestOptions);
+
+      const body = {
+        type: 'oauth',
+        credentials,
+      };
+      if (extra && typeof extra === 'object' && Object.keys(extra).length) {
+        body.extra = extra;
+      }
 
       const result = await requestJson(origin, `/api/v1/admin/accounts/${accountId}/apply-oauth-credentials`, {
         method: 'POST',
         token,
-        timeoutMs: options.timeoutMs,
-        body: {
-          type: 'oauth',
-          credentials,
-        },
+        timeoutMs: requestOptions.timeoutMs,
+        body,
       });
 
-      await logWithOptions(`${logLabel}：账号 #${accountId} 的 OAuth 凭据已更新。`, 'ok', options);
+      await logWithOptions(`${logLabel}：账号 #${accountId} 的 OAuth 凭据已更新。`, 'ok', requestOptions);
       return result;
     }
 

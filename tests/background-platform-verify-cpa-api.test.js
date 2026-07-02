@@ -328,6 +328,138 @@ test('platform verify module submits Plus visible step 13 to SUB2API via direct 
   }
 });
 
+test('platform verify module writes OpenAI reauth credentials and extra through SUB2API apply API', async () => {
+  const originalFetch = globalThis.fetch;
+  const fetchCalls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    const body = options.body ? JSON.parse(options.body) : null;
+    fetchCalls.push({ path: parsed.pathname, method: options.method || 'GET', body });
+
+    if (parsed.pathname === '/api/v1/auth/login') {
+      return createSub2ApiResponse({ code: 0, data: { access_token: 'admin-token' } });
+    }
+    if (parsed.pathname === '/api/v1/admin/openai/exchange-code') {
+      return createSub2ApiResponse({
+        code: 0,
+        data: {
+          access_token: 'openai-access',
+          refresh_token: 'openai-refresh',
+          id_token: 'openai-id',
+          expires_at: 1770000000,
+          email: 'flow@example.com',
+          name: 'Flow User',
+          chatgpt_account_id: 'acct-123',
+          chatgpt_user_id: 'user-123',
+          organization_id: 'org-123',
+          plan_type: 'plus',
+          subscription_expires_at: '2026-12-31T00:00:00Z',
+          client_id: 'app-openai-client',
+          chatgpt_account_is_fedramp: true,
+          privacy_mode: 'training_off',
+        },
+      });
+    }
+    if (parsed.pathname === '/api/v1/admin/accounts/42/apply-oauth-credentials') {
+      return createSub2ApiResponse({ code: 0, data: { id: 42, status: 'active' } });
+    }
+    return createSub2ApiResponse({ code: 1, message: `unexpected path ${parsed.pathname}` }, 404);
+  };
+
+  const api = loadStep10WithSub2Api();
+  const { deps, completed } = createDeps({
+    getPanelMode: () => 'sub2api',
+    getTabId: async () => 91,
+    isTabAlive: async () => true,
+  });
+  const executor = api.createStep10Executor(deps);
+
+  try {
+    await executor.executeStep10({
+      panelMode: 'sub2api',
+      localhostUrl: 'http://localhost:1455/auth/callback?code=callback-code&state=oauth-state',
+      sub2apiUrl: 'https://sub.example/admin/accounts',
+      sub2apiEmail: 'admin@example.com',
+      sub2apiPassword: 'secret',
+      sub2apiSessionId: 'session-1',
+      sub2apiOAuthState: 'oauth-state',
+      sub2apiGroupId: 5,
+      selectedAccountId: 42,
+    });
+
+    const exchangeCall = fetchCalls.find((call) => call.path === '/api/v1/admin/openai/exchange-code');
+    const applyCall = fetchCalls.find((call) => call.path === '/api/v1/admin/accounts/42/apply-oauth-credentials');
+    assert.equal(exchangeCall.body.code, 'callback-code');
+    assert.deepStrictEqual(applyCall.body, {
+      type: 'oauth',
+      credentials: {
+        access_token: 'openai-access',
+        refresh_token: 'openai-refresh',
+        id_token: 'openai-id',
+        expires_at: 1770000000,
+        email: 'flow@example.com',
+        chatgpt_account_id: 'acct-123',
+        chatgpt_user_id: 'user-123',
+        organization_id: 'org-123',
+        plan_type: 'plus',
+        subscription_expires_at: '2026-12-31T00:00:00Z',
+        client_id: 'app-openai-client',
+        chatgpt_account_is_fedramp: true,
+      },
+      extra: {
+        email: 'flow@example.com',
+        name: 'Flow User',
+        privacy_mode: 'training_off',
+      },
+    });
+    assert.equal(completed[0].payload.reauthCompleted, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('SUB2API apply OAuth credentials keeps options-only fourth argument out of payload', async () => {
+  const sub2apiSource = fs.readFileSync('background/sub2api-api.js', 'utf8');
+  const apiModule = new Function('self', `${sub2apiSource}; return self.MultiPageBackgroundSub2ApiApi;`)({});
+  const fetchCalls = [];
+  const api = apiModule.createSub2ApiApi({
+    addLog: async () => {},
+    normalizeSub2ApiUrl: () => 'https://sub.example/admin/accounts',
+    fetchImpl: async (url, options = {}) => {
+      const parsed = new URL(url);
+      const body = options.body ? JSON.parse(options.body) : null;
+      fetchCalls.push({ path: parsed.pathname, method: options.method || 'GET', body });
+
+      if (parsed.pathname === '/api/v1/auth/login') {
+        return createSub2ApiResponse({ code: 0, data: { access_token: 'admin-token' } });
+      }
+      if (parsed.pathname === '/api/v1/admin/accounts/42/apply-oauth-credentials') {
+        return createSub2ApiResponse({ code: 0, data: { id: 42 } });
+      }
+      return createSub2ApiResponse({ code: 1, message: `unexpected path ${parsed.pathname}` }, 404);
+    },
+  });
+
+  await api.applyOAuthCredentials(
+    42,
+    {
+      sub2apiUrl: 'https://sub.example/admin/accounts',
+      sub2apiEmail: 'admin@example.com',
+      sub2apiPassword: 'secret',
+    },
+    { access_token: 'openai-access' },
+    { timeoutMs: 5000, logLabel: '兼容测试' }
+  );
+
+  const applyCall = fetchCalls.find((call) => call.path === '/api/v1/admin/accounts/42/apply-oauth-credentials');
+  assert.deepStrictEqual(applyCall.body, {
+    type: 'oauth',
+    credentials: {
+      access_token: 'openai-access',
+    },
+  });
+});
+
 test('platform verify module forwards SUB2API account priority to direct create API', async () => {
   const originalFetch = globalThis.fetch;
   const fetchCalls = [];
