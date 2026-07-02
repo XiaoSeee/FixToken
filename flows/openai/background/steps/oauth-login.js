@@ -391,6 +391,8 @@
                 accountIdentifier,
                 loginIdentifierType: currentIdentifierType,
                 password,
+                // SUB2API 重新授权只需要通过邮箱验证码完成登录；优先点击一次性验证码入口，避免额外提交密码。
+                ...(currentState?.sub2apiReauthMode || currentState?.selectedAccountId ? { preferOneTimeCodeLogin: true } : {}),
                 visibleStep: completionStep,
               },
             },

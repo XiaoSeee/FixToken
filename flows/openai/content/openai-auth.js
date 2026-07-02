@@ -5982,8 +5982,22 @@ async function step6LoginFromPasswordPage(payload, snapshot) {
   const visibleStep = Math.floor(Number(payload?.visibleStep) || 0) || 7;
   const currentSnapshot = normalizeStep6Snapshot(snapshot || inspectLoginAuthState());
   const hasPassword = Boolean(String(payload?.password || '').trim());
+  const shouldPreferOneTimeCodeLogin = Boolean(payload?.preferOneTimeCodeLogin && !payload?.oneTimeCodeLoginAttempted);
 
   if (currentSnapshot.passwordInput) {
+    if (shouldPreferOneTimeCodeLogin && currentSnapshot.switchTrigger) {
+      // SUB2API 重新授权密码页优先走一次性验证码登录；标记本轮已尝试，防止切换失败后反复点击同一入口。
+      log('已进入密码页，优先使用一次性验证码登录，跳过密码填写。', 'info', { step: visibleStep, stepKey: 'oauth-login' });
+      return step6SwitchToOneTimeCodeLogin({
+        ...payload,
+        oneTimeCodeLoginAttempted: true,
+      }, currentSnapshot);
+    }
+
+    if (shouldPreferOneTimeCodeLogin && !currentSnapshot.switchTrigger && hasPassword) {
+      log('当前密码页没有可用的一次性验证码登录入口，回退到密码登录。', 'warn', { step: visibleStep, stepKey: 'oauth-login' });
+    }
+
     if (!hasPassword) {
       if (currentSnapshot.switchTrigger) {
         log('当前未提供密码，改走一次性验证码登录。', 'warn', { step: visibleStep, stepKey: 'oauth-login' });
