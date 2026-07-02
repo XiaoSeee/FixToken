@@ -815,15 +815,42 @@
       await logWithOptions(`${logLabel}：正在登录 SUB2API 并查询错误账号...`, 'info', options);
       const { origin, token } = await loginSub2Api(state, options);
 
-      const pageSize = options.pageSize || 100;
-      const result = await requestJson(origin, `/api/v1/admin/accounts?status=error&platform=openai&page_size=${pageSize}`, {
-        method: 'GET',
-        token,
-        timeoutMs: options.timeoutMs,
-      });
+      // 解析侧边栏配置的分组名，只查询该分组下的错误账号，避免误带回其他分组的 error 账号。
+      // sub2api 的 GET /api/v1/admin/accounts 支持 group 参数：传数字 group ID 即按该分组过滤。
+      const groupNames = normalizeSub2ApiGroupNames(state.sub2apiGroupName || DEFAULT_SUB2API_GROUP_NAME);
+      const groups = await getGroupsByNames(origin, token, groupNames, options);
+      const groupId = normalizeProxyId(groups[0]?.id);
+      if (!groupId) {
+        throw new Error(`SUB2API 中未找到分组 ${groupNames.join('、')} 的有效 ID，无法按分组查询错误账号。`);
+      }
+      const groupLabel = groups.map((item) => `${item.name}（#${item.id}）`).join('、');
+      await logWithOptions(`${logLabel}：按分组 ${groupLabel} 过滤错误账号。`, 'info', options);
 
-      const items = Array.isArray(result?.items) ? result.items : [];
-      await logWithOptions(`${logLabel}：找到 ${items.length} 个错误账号。`, 'ok', options);
+      // sub2api 的 status 是单值复合状态（repo 层 switch 单 case 匹配，不支持逗号多值），
+      // 因此要同时获取“错误”和“不可调度”两类账号，需要分别请求再按 id 合并去重。
+      // - error：status=error 的账号
+      // - unschedulable：status=active 但 schedulable=false（手动关闭调度）的账号
+      const pageSize = options.pageSize || 100;
+      const targetStatuses = ['error', 'unschedulable'];
+      const seenIds = new Set();
+      const items = [];
+      for (const statusValue of targetStatuses) {
+        const result = await requestJson(origin, `/api/v1/admin/accounts?status=${statusValue}&platform=openai&group=${groupId}&page_size=${pageSize}`, {
+          method: 'GET',
+          token,
+          timeoutMs: options.timeoutMs,
+        });
+        const statusItems = Array.isArray(result?.items) ? result.items : [];
+        for (const item of statusItems) {
+          const itemId = String(item?.id || '');
+          if (!itemId || seenIds.has(itemId)) continue;
+          seenIds.add(itemId);
+          items.push(item);
+        }
+        await logWithOptions(`${logLabel}：分组 ${groupLabel} 下 status=${statusValue} 命中 ${statusItems.length} 个账号。`, 'info', options);
+      }
+
+      await logWithOptions(`${logLabel}：在分组 ${groupLabel} 下共找到 ${items.length} 个待重新授权账号（错误 + 不可调度，已按 ID 去重）。`, 'ok', options);
       return items;
     }
 
