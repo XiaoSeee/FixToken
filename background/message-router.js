@@ -742,6 +742,14 @@
     }
 
     async function handlePlatformVerifyStepData(payload) {
+      // 把 platform-verify 完成时的 reauthCompleted 标志持久化到 state，
+      // 供 START_SUB2API_REAUTH 主循环的 isSub2ApiReauthCompleted 检测写回是否成功。
+      // reauth 链路通过 completeNodeFromBackground('platform-verify', { reauthCompleted:true })
+      // 传入该字段；此处若不写入 state，主循环会因 state.reauthCompleted 恒为 false 而
+      // 把每个账号都判定为“未确认写回”失败。
+      if (payload?.reauthCompleted !== undefined) {
+        await setState({ reauthCompleted: Boolean(payload.reauthCompleted) });
+      }
       if (payload.localhostUrl) {
         await closeLocalhostCallbackTabs(payload.localhostUrl);
       }

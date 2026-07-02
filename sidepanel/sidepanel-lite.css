@@ -280,14 +280,24 @@ h2 {
 
 .account-item {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 9px;
+  align-items: start;
   padding: 10px;
   border-bottom: 1px solid #edf1f6;
 }
 
 .account-item:last-child {
   border-bottom: 0;
+}
+
+/* 仅包裹勾选框与主信息区，点击删除按钮不会触发勾选 */
+.account-main-label {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+  cursor: pointer;
 }
 
 .account-item input {
@@ -316,6 +326,57 @@ h2 {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 重新授权统计行：总次数 / 成功 / 失败 + 最近结果徽标 */
+.account-stats {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.account-stats .last-result {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid #e4e7ec;
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.account-stats .last-result.success {
+  color: var(--ok);
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.account-stats .last-result.failure {
+  color: var(--danger);
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.account-stats .last-result.none {
+  color: var(--muted);
+  background: #f2f4f7;
+  border-color: #e4e7ec;
+}
+
+/* 删除按钮：紧凑、灰，hover 时变红 */
+.account-delete {
+  align-self: start;
+  min-height: 0;
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+.account-delete:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: #fecaca;
 }
 
 .empty-state {

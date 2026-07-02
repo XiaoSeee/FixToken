@@ -16,6 +16,8 @@ const dom = {
   tempDomains: document.getElementById('input-temp-domains'),
   tempRandomSubdomain: document.getElementById('input-temp-random-subdomain'),
   selectAllAccounts: document.getElementById('btn-select-all-accounts'),
+  selectEmptyAccounts: document.getElementById('btn-select-empty-accounts'),
+  selectFailedAccounts: document.getElementById('btn-select-failed-accounts'),
   deselectAllAccounts: document.getElementById('btn-deselect-all-accounts'),
   fetchAccounts: document.getElementById('btn-fetch-accounts'),
   resetStep: document.getElementById('btn-reset-step'),
@@ -31,6 +33,9 @@ let latestState = {};
 let errorAccounts = [];
 let saveTimer = 0;
 let isSaving = false;
+// 账号重新授权统计：{ [accountId]: { totalAttempts, successCount, failureCount, lastResult, lastUpdatedAt } }
+// 持久化在 chrome.storage.local，重新加载插件也不会丢失。
+let reauthStats = {};
 
 /**
  * 统一封装 Chrome Runtime 消息请求。
@@ -230,12 +235,17 @@ function getAccountEmail(account = {}) {
 
 /**
  * 渲染错误账号列表和批量执行按钮状态。
+ *
+ * 每个账号项展示：勾选框、账号名、元信息（#id · email · status）、
+ * 重新授权统计（总次数 / 成功 / 失败 / 最近结果徽标）以及尾部删除按钮。
  */
 function renderAccounts() {
   if (!errorAccounts.length) {
     dom.accountSummary.textContent = '未找到状态为 error 的 OpenAI 账号。';
     dom.accountList.innerHTML = '<div class="empty-state">暂无可重新授权账号。</div>';
     dom.selectAllAccounts.disabled = true;
+    dom.selectEmptyAccounts.disabled = true;
+    dom.selectFailedAccounts.disabled = true;
     dom.deselectAllAccounts.disabled = true;
     dom.startReauth.disabled = true;
     return;
@@ -247,19 +257,51 @@ function renderAccounts() {
     const label = escapeHtml(getAccountLabel(account));
     const email = escapeHtml(getAccountEmail(account));
     const status = escapeHtml(account.status || 'error');
+    const stats = renderAccountStatsHtml(reauthStats[id]);
     return `
-      <label class="account-item">
-        <input type="checkbox" name="reauth-account" value="${escapeHtml(id)}">
-        <span class="account-main">
-          <span class="account-name">${label}</span>
-          <span class="account-meta">#${escapeHtml(id)}${email ? ` · ${email}` : ''} · ${status}</span>
-        </span>
-      </label>
+      <div class="account-item">
+        <label class="account-main-label">
+          <input type="checkbox" name="reauth-account" value="${escapeHtml(id)}">
+          <span class="account-main">
+            <span class="account-name">${label}</span>
+            <span class="account-meta">#${escapeHtml(id)}${email ? ` · ${email}` : ''} · ${status}</span>
+            ${stats}
+          </span>
+        </label>
+        <button class="button secondary account-delete" type="button" data-account-id="${escapeHtml(id)}" title="删除该账号的本地统计并从列表移除">删除</button>
+      </div>
     `;
   }).join('');
   dom.selectAllAccounts.disabled = false;
+  dom.selectEmptyAccounts.disabled = false;
+  dom.selectFailedAccounts.disabled = false;
   dom.deselectAllAccounts.disabled = false;
   updateStartButtonState();
+}
+
+/**
+ * 生成账号项的统计行 HTML，包含总次数、成功 / 失败计数与最近结果徽标。
+ *
+ * @param {object} stats 该账号的本地统计；为空时显示“未授权”。
+ * @returns {string} 统计行 HTML。
+ */
+function renderAccountStatsHtml(stats) {
+  if (!stats) {
+    return '<span class="account-stats">未授权 <span class="last-result none">最近:—</span></span>';
+  }
+  const total = Number(stats.totalAttempts) || 0;
+  const success = Number(stats.successCount) || 0;
+  const failure = Number(stats.failureCount) || 0;
+  let badgeClass = 'none';
+  let badgeText = '最近:—';
+  if (stats.lastResult === 'success') {
+    badgeClass = 'success';
+    badgeText = '最近:成功';
+  } else if (stats.lastResult === 'failure') {
+    badgeClass = 'failure';
+    badgeText = '最近:失败';
+  }
+  return `<span class="account-stats">授权 ${total} 次 · 成功 ${success} · 失败 ${failure} <span class="last-result ${badgeClass}">${badgeText}</span></span>`;
 }
 
 /**
@@ -281,6 +323,25 @@ function updateStartButtonState() {
 function setAllAccountsChecked(checked) {
   dom.accountList.querySelectorAll('input[name="reauth-account"]').forEach((input) => {
     input.checked = checked;
+  });
+  updateStartButtonState();
+}
+
+/**
+ * 按最近一次授权记录排他式勾选账号。
+ *
+ * @param {string|null} target 目标最近结果：null 表示空记录（含本地无记录），
+ *                              'failure' 表示最近一次失败。匹配项被勾选，其余项取消勾选。
+ */
+function selectAccountsByLastResult(target) {
+  dom.accountList.querySelectorAll('input[name="reauth-account"]').forEach((input) => {
+    const id = String(input.value || '');
+    const stats = reauthStats[id];
+    const lastResult = stats?.lastResult || null;
+    const matched = target === null
+      ? lastResult === null
+      : lastResult === target;
+    input.checked = matched;
   });
   updateStartButtonState();
 }
@@ -378,14 +439,36 @@ async function fetchErrorAccounts() {
   dom.accountSummary.textContent = '正在查询 SUB2API 错误账号...';
   try {
     const response = await sendMessage({ type: 'SUB2API_LIST_ERROR_ACCOUNTS' });
-    errorAccounts = Array.isArray(response.accounts) ? response.accounts : [];
+    const fetched = Array.isArray(response.accounts) ? response.accounts : [];
+    // 获取后所有账号都保留展示。仅对“最近一次成功”的账号清空最近记录
+    // （成功后又回到 error，说明上次成功已不相关，按新账号重新处理）；
+    // 失败与空记录账号保持原样，失败记录保留可见，不重置、不新建。
+    let clearedSuccess = 0;
+    for (const account of fetched) {
+      const id = String(account.id || '');
+      const stats = reauthStats[id];
+      if (stats && stats.lastResult === 'success') {
+        stats.lastResult = null;
+        stats.lastUpdatedAt = null;
+        clearedSuccess += 1;
+      }
+    }
+    if (clearedSuccess) {
+      await saveReauthStats();
+    }
+    errorAccounts = fetched;
     renderAccounts();
+    if (clearedSuccess) {
+      dom.accountSummary.textContent = `已加载 ${errorAccounts.length} 个错误账号（已重置 ${clearedSuccess} 个最近成功记录）。`;
+    }
     await refreshState();
   } catch (error) {
     errorAccounts = [];
     dom.accountSummary.textContent = `获取失败：${error.message}`;
     dom.accountList.innerHTML = '<div class="empty-state">请检查 SUB2API 地址、账号密码和后台网络。</div>';
     dom.selectAllAccounts.disabled = true;
+    dom.selectEmptyAccounts.disabled = true;
+    dom.selectFailedAccounts.disabled = true;
     dom.deselectAllAccounts.disabled = true;
     dom.startReauth.disabled = true;
     renderTransientLog(`获取错误账号失败：${error.message}`, 'error');
@@ -440,9 +523,35 @@ async function startReauth() {
       accounts: selectedAccounts,
     });
     const results = Array.isArray(response.results) ? response.results : [];
+    // 按账号回写本地统计：累加总次数、成功 / 失败计数，并记录最近一次结果。
+    for (const item of results) {
+      const id = String(item.accountId || '');
+      if (!id) {
+        continue;
+      }
+      const stats = reauthStats[id] || {
+        totalAttempts: 0,
+        successCount: 0,
+        failureCount: 0,
+        lastResult: null,
+        lastUpdatedAt: null,
+      };
+      stats.totalAttempts = (Number(stats.totalAttempts) || 0) + 1;
+      if (item.success) {
+        stats.successCount = (Number(stats.successCount) || 0) + 1;
+        stats.lastResult = 'success';
+      } else {
+        stats.failureCount = (Number(stats.failureCount) || 0) + 1;
+        stats.lastResult = 'failure';
+      }
+      stats.lastUpdatedAt = Date.now();
+      reauthStats[id] = stats;
+    }
+    await saveReauthStats();
     const successCount = results.filter((item) => item.success).length;
     const failCount = results.length - successCount;
     dom.accountSummary.textContent = `批量重新授权结束：成功 ${successCount} 个，失败 ${failCount} 个。`;
+    renderAccounts();
     await refreshState();
   } catch (error) {
     dom.accountSummary.textContent = `重新授权失败：${error.message}`;
@@ -485,6 +594,12 @@ function bindEvents() {
   dom.selectAllAccounts.addEventListener('click', () => {
     setAllAccountsChecked(true);
   });
+  dom.selectEmptyAccounts.addEventListener('click', () => {
+    selectAccountsByLastResult(null);
+  });
+  dom.selectFailedAccounts.addEventListener('click', () => {
+    selectAccountsByLastResult('failure');
+  });
   dom.deselectAllAccounts.addEventListener('click', () => {
     setAllAccountsChecked(false);
   });
@@ -495,6 +610,23 @@ function bindEvents() {
     if (event.target?.matches?.('input[name="reauth-account"]')) {
       updateStartButtonState();
     }
+  });
+  // 删除按钮委托：仅在此处点击删除才会清掉该账号的本地统计并从列表移除。
+  dom.accountList.addEventListener('click', (event) => {
+    const button = event.target?.closest?.('.account-delete');
+    if (!button) {
+      return;
+    }
+    const id = String(button.dataset.accountId || '');
+    if (!id) {
+      return;
+    }
+    if (reauthStats[id] !== undefined) {
+      delete reauthStats[id];
+      saveReauthStats();
+    }
+    errorAccounts = errorAccounts.filter((account) => String(account.id) !== id);
+    renderAccounts();
   });
   dom.startReauth.addEventListener('click', () => {
     startReauth().catch((error) => renderTransientLog(error.message, 'error'));
@@ -524,6 +656,40 @@ function bindEvents() {
  * 折叠状态在 chrome.storage.local 中的持久化键。
  */
 const COLLAPSE_STORAGE_KEY = 'sidepanelCollapseState';
+
+/**
+ * 账号重新授权统计在 chrome.storage.local 中的持久化键。
+ * 结构：{ [accountId]: { totalAttempts, successCount, failureCount, lastResult, lastUpdatedAt } }。
+ */
+const REAUTH_STATS_STORAGE_KEY = 'reauthAccountStats';
+
+/**
+ * 读取已持久化的账号重新授权统计。
+ *
+ * @returns {Promise<object>} accountId 到统计对象的映射；读取失败时返回空对象。
+ */
+async function loadReauthStats() {
+  try {
+    const stored = await chrome.storage.local.get(REAUTH_STATS_STORAGE_KEY);
+    reauthStats = stored?.[REAUTH_STATS_STORAGE_KEY] || {};
+    if (!reauthStats || typeof reauthStats !== 'object') {
+      reauthStats = {};
+    }
+  } catch (error) {
+    reauthStats = {};
+  }
+}
+
+/**
+ * 持久化当前账号重新授权统计。持久化失败不影响使用，静默忽略。
+ */
+function saveReauthStats() {
+  try {
+    chrome.storage.local.set({ [REAUTH_STATS_STORAGE_KEY]: reauthStats });
+  } catch (error) {
+    /* 持久化失败不影响使用，忽略 */
+  }
+}
 
 /**
  * 读取已持久化的折叠状态。
@@ -590,6 +756,7 @@ async function initCollapsibleCards() {
 
 bindEvents();
 initCollapsibleCards();
+loadReauthStats();
 refreshState().catch((error) => {
   setSaveStatus('同步失败', 'warn');
   renderTransientLog(`初始化失败：${error.message}`, 'error');
