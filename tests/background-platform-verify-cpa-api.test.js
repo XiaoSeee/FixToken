@@ -367,7 +367,14 @@ test('platform verify module writes OpenAI reauth credentials and extra through 
   };
 
   const api = loadStep10WithSub2Api();
-  const { deps, completed } = createDeps({
+  const completionEvents = [];
+  const { deps } = createDeps({
+    setState: async (updates) => {
+      completionEvents.push({ type: 'setState', updates });
+    },
+    completeNodeFromBackground: async (step, payload) => {
+      completionEvents.push({ type: 'completeNode', step, payload });
+    },
     getPanelMode: () => 'sub2api',
     getTabId: async () => 91,
     isTabAlive: async () => true,
@@ -412,7 +419,13 @@ test('platform verify module writes OpenAI reauth credentials and extra through 
         privacy_mode: 'training_off',
       },
     });
-    assert.equal(completed[0].payload.reauthCompleted, true);
+    assert.deepStrictEqual(completionEvents[0], {
+      type: 'setState',
+      updates: { reauthCompleted: true },
+    });
+    assert.equal(completionEvents[1].type, 'completeNode');
+    assert.equal(completionEvents[1].step, 'platform-verify');
+    assert.equal(completionEvents[1].payload.reauthCompleted, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

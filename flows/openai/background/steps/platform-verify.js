@@ -19,6 +19,7 @@
       reuseOrCreateTab,
       sendToContentScript,
       sendToContentScriptResilient,
+      setState,
       shouldBypassStep9ForLocalCpa,
       DEFAULT_SUB2API_GROUP_NAME = 'codex',
       SUB2API_STEP9_RESPONSE_TIMEOUT_MS,
@@ -413,7 +414,11 @@
               logLabel: `步骤 ${visibleStep}（重新授权）`,
               timeoutMs: SUB2API_STEP9_RESPONSE_TIMEOUT_MS,
             });
-            
+
+            // 重新授权主循环会在节点完成信号到达后立即读取运行态确认写回结果。
+            // 因此必须在通知节点完成前持久化标志，避免最终节点异步收尾造成误判。
+            await setState({ reauthCompleted: true });
+
             await completeNodeFromBackground(state?.nodeId || 'platform-verify', {
               ...exchangeResult,
               verifiedStatus: `SUB2API 已重新授权账号 #${state.selectedAccountId}`,

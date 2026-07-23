@@ -14050,6 +14050,7 @@ const step10Executor = self.MultiPageBackgroundStep10?.createStep10Executor({
   reuseOrCreateTab,
   sendToContentScript,
   sendToContentScriptResilient,
+  setState,
   shouldBypassStep9ForLocalCpa,
   DEFAULT_SUB2API_GROUP_NAME,
   SUB2API_STEP9_RESPONSE_TIMEOUT_MS,
